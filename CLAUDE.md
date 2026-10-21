@@ -4,7 +4,7 @@
 - Do not make assumptions. If something is unclear, or there is more than one reasonable option, ask.
 - Ask before installing packages, changing config files, or committing.
 - Ignore `DECISIONS.md`.
-- Log brief summaries of prompts and decisions made in `AI_USAGE.md`.
+- Log brief summaries of prompts and decisions made in `AI_USAGE.md`. Keep each entry to 500 characters or less.
 - Save a copy of every plan made to this project's local `.claude/plans/` folder (repo root), in addition to wherever plan mode saves it by default.
 
 ## Project overview
@@ -52,18 +52,19 @@ Only what is drawn in the diagram is stated here. Do not invent fields or relati
 - **Lint/format**: ESLint (flat config) + Prettier for all JS/TS
 - **Tests**: Vitest.
   - **API**: set up. Nest 12 scaffolds Vitest by default (Vite 8 transform, no SWC). SWC is not used: its native addon fails on this machine's drive ACLs.
-  - **Before installing Angular**: check whether the Angular CLI will set up Jest (or another runner) by default, then stop and ask how to proceed.
+  - **Web**: Angular 22 unit-test builder (`@angular/build:unit-test`) with Vitest, the `ng new` default. `ng test --watch=false` runs once.
 
 ## Commands
 npm workspaces (`apps/*`), run from the repo root. Status says which exist so far.
 
 | Command | Purpose | Status |
 | --- | --- | --- |
-| `npm run dev` | Run API and client in dev mode | Exists (API only) |
-| `npm run build` | Build all workspaces | Exists (API only) |
-| `npm run test` | Run tests | Exists (API only) |
-| `npm run lint` | Lint all JS/TS | Exists (API only) |
-| `npm run format` | Format with Prettier | Exists (API only) |
+| `npm run dev:api` | Run the API in dev mode (own terminal) | Exists |
+| `npm run dev:web` | Run the client in dev mode (own terminal) | Exists |
+| `npm run build` | Build all workspaces | Exists |
+| `npm run test` | Run tests | Exists |
+| `npm run lint` | Lint all JS/TS | Exists |
+| `npm run format` | Format with Prettier | Exists |
 | `npm run db:migrate` | Run pending migrations | To be created |
 | `npm run db:migrate:generate` | Generate a migration from entity changes | To be created |
 | `npm run db:migrate:revert` | Revert the last migration | To be created |
@@ -79,7 +80,7 @@ API-only: `npm run test:e2e -w apps/api` runs the e2e tests (`apps/api/test/`).
 
 ## Folder structure
 ```
-web/                        Angular client
+apps/web/                   Angular client
 apps/api/                   NestJS API, Engine, scenario runner
 apps/api/database/migrations/  TypeORM migrations
 diagrams/                   Excalidraw diagrams (source of truth)
@@ -108,4 +109,4 @@ SQLite file location: `apps/api/data/fleet.sqlite`, set via `DB_PATH` in `apps/a
 Path-scoped rules in `.claude/rules/` load when working on matching files:
 - `backend.md` — `apps/api/**`
 - `database.md` — `apps/api/database/**`, `apps/api/**/*.entity.ts`
-- `frontend.md` — `web/**`
+- `frontend.md` — `apps/web/**`

@@ -5,10 +5,11 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "npm run start:dev -w apps/api",
-    "build": "npm run build -w apps/api",
-    "test": "npm run test -w apps/api",
-    "lint": "npm run lint -w apps/api",
-    "format": "npm run format -w apps/api"
+    "dev:api": "npm run start:dev -w apps/api",
+    "dev:web": "npm start -w apps/web",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces",
+    "format": "npm run format --workspaces"
   }
 }

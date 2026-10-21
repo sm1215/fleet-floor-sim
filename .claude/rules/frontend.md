@@ -1,6 +1,6 @@
 ---
 paths:
-  - "web/**"
+  - "apps/web/**"
 ---
 
 # Frontend rules (Angular)
