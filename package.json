@@ -10,6 +10,9 @@
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",
     "lint": "npm run lint --workspaces",
-    "format": "npm run format --workspaces"
+    "format": "npm run format --workspaces",
+    "db:migrate": "npm run db:migrate -w apps/api",
+    "db:migrate:generate": "npm run db:migrate:generate -w apps/api --",
+    "db:migrate:revert": "npm run db:migrate:revert -w apps/api"
   }
 }

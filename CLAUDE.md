@@ -41,9 +41,9 @@ Only what is drawn in the diagram is stated here. Do not invent fields or relati
 | QueuedCommand | Id (PK), Command, Params                        |
 | LogEntry      | Id (PK), Action, Params, Result                 |
 
-- FK columns `floor_id`, `cell_id`, and `robot_id` exist. **Which entity owns each FK is not decided yet — ask.**
+- FK ownership: Cell → Floor (`floor_id`), Robot → Cell (`cell_id`), QueuedCommand → Robot (`robot_id`). LogEntry has no FK.
 - Cell has `Unique(floor_id, XPosition, YPosition)`.
-- `Direction` is a plain int. Its encoding is not defined — do not assign one.
+- `Direction` is an int: 0 = N, 1 = E, 2 = S, 3 = W. Origin is bottom-left; N = +y.
 
 ## Tech stack
 - **Database**: SQLite + TypeORM
@@ -65,9 +65,9 @@ npm workspaces (`apps/*`), run from the repo root. Status says which exist so fa
 | `npm run test` | Run tests | Exists |
 | `npm run lint` | Lint all JS/TS | Exists |
 | `npm run format` | Format with Prettier | Exists |
-| `npm run db:migrate` | Run pending migrations | To be created |
-| `npm run db:migrate:generate` | Generate a migration from entity changes | To be created |
-| `npm run db:migrate:revert` | Revert the last migration | To be created |
+| `npm run db:migrate` | Run pending migrations | Exists |
+| `npm run db:migrate:generate -- database/migrations/<name>` | Generate a migration from entity changes | Exists |
+| `npm run db:migrate:revert` | Revert the last migration | Exists |
 | `npm run scenario -- path/to/scenario.txt` | Run a scenario file | To be created |
 
 API-only: `npm run test:e2e -w apps/api` runs the e2e tests (`apps/api/test/`).
