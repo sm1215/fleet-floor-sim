@@ -1,0 +1,14 @@
+<div class="h-full overflow-y-auto border border-[#1e1e1e] p-3">
+  <h2 class="mb-2 text-[#f08c00]">
+    @if (robotId() !== null) {
+      R{{ robotId() }} Queue
+    } @else {
+      Queue
+    }
+  </h2>
+  <ol class="space-y-1">
+    @for (command of commands(); track command.id) {
+      <li>{{ command.command }}</li>
+    }
+  </ol>
+</div>

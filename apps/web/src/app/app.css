@@ -1,0 +1,51 @@
+:host {
+  display: block;
+  min-width: 600px;
+}
+
+/* Wide: queue panel to the right of the grid. */
+.layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: max-content 200px;
+  justify-content: center;
+  grid-template-areas:
+    'top .'
+    'grid queue'
+    'controls .';
+}
+
+.area-top {
+  grid-area: top;
+}
+
+.area-grid {
+  grid-area: grid;
+}
+
+/* Capped at the floor's max height (400px); scrolls past it. */
+.area-queue {
+  grid-area: queue;
+  min-height: 0;
+  max-height: 400px;
+}
+
+.area-controls {
+  grid-area: controls;
+}
+
+/* Narrow: queue panel drops below the grid. */
+@media (max-width: 767px) {
+  .layout {
+    grid-template-columns: max-content;
+    grid-template-areas:
+      'top'
+      'grid'
+      'queue'
+      'controls';
+  }
+
+  .area-queue {
+    max-height: 200px;
+  }
+}

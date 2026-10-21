@@ -1,0 +1,8 @@
+<div
+  class="cell box-border h-full w-full border border-[#f08c00] p-[8%]"
+  [class]="cell().obstacle ? 'obstacle bg-[#ffec99]' : ''"
+>
+  @if (robot(); as robot) {
+    <app-robot [robot]="robot" />
+  }
+</div>

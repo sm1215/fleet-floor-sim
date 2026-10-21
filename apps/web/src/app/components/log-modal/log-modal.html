@@ -1,0 +1,15 @@
+<dialog
+  #dialog
+  class="m-auto h-[70vh] w-[80vw] max-w-3xl rounded bg-white p-6 shadow-lg backdrop:bg-black/40"
+  aria-label="Log"
+  (cancel)="close($event)"
+>
+  <button
+    type="button"
+    class="absolute top-2 right-3 text-xl leading-none"
+    aria-label="Close"
+    (click)="close()"
+  >
+    &times;
+  </button>
+</dialog>
