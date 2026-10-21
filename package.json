@@ -1,0 +1,14 @@
+{
+  "name": "fleet-floor-sim",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run start:dev -w apps/api",
+    "build": "npm run build -w apps/api",
+    "test": "npm run test -w apps/api",
+    "lint": "npm run lint -w apps/api",
+    "format": "npm run format -w apps/api"
+  }
+}

@@ -5,6 +5,7 @@
 - Ask before installing packages, changing config files, or committing.
 - Ignore `DECISIONS.md`.
 - Log brief summaries of prompts and decisions made in `AI_USAGE.md`.
+- Save a copy of every plan made to this project's local `.claude/plans/` folder (repo root), in addition to wherever plan mode saves it by default.
 
 ## Project overview
 A lightweight robot fleet floor simulator, built quickly. The Excalidraw diagrams in `diagrams/` are the source of truth:
@@ -49,27 +50,29 @@ Only what is drawn in the diagram is stated here. Do not invent fields or relati
 - **Backend**: NestJS
 - **Frontend**: Angular
 - **Lint/format**: ESLint (flat config) + Prettier for all JS/TS
-- **Tests**: Vitest — deferred. Install only after NestJS and Angular exist, then run a smoke test for both.
-  - **Before installing NestJS**: check whether the Nest CLI will set up Jest by default, then stop and ask how to proceed.
+- **Tests**: Vitest.
+  - **API**: set up. Nest 12 scaffolds Vitest by default (Vite 8 transform, no SWC). SWC is not used: its native addon fails on this machine's drive ACLs.
   - **Before installing Angular**: check whether the Angular CLI will set up Jest (or another runner) by default, then stop and ask how to proceed.
 
 ## Commands
-npm workspaces, run from the repo root. **None of these exist yet — to be created.**
+npm workspaces (`apps/*`), run from the repo root. Status says which exist so far.
 
-| Command | Purpose |
-| --- | --- |
-| `npm run dev` | Run API and client in dev mode |
-| `npm run build` | Build all workspaces |
-| `npm run test` | Run tests |
-| `npm run lint` | Lint all JS/TS |
-| `npm run format` | Format with Prettier |
-| `npm run db:migrate` | Run pending migrations |
-| `npm run db:migrate:generate` | Generate a migration from entity changes |
-| `npm run db:migrate:revert` | Revert the last migration |
-| `npm run scenario -- path/to/scenario.txt` | Run a scenario file |
+| Command | Purpose | Status |
+| --- | --- | --- |
+| `npm run dev` | Run API and client in dev mode | Exists (API only) |
+| `npm run build` | Build all workspaces | Exists (API only) |
+| `npm run test` | Run tests | Exists (API only) |
+| `npm run lint` | Lint all JS/TS | Exists (API only) |
+| `npm run format` | Format with Prettier | Exists (API only) |
+| `npm run db:migrate` | Run pending migrations | To be created |
+| `npm run db:migrate:generate` | Generate a migration from entity changes | To be created |
+| `npm run db:migrate:revert` | Revert the last migration | To be created |
+| `npm run scenario -- path/to/scenario.txt` | Run a scenario file | To be created |
+
+API-only: `npm run test:e2e -w apps/api` runs the e2e tests (`apps/api/test/`).
 
 ### Scenario runner
-- Standalone script in `api/`, separate from the dev server.
+- Standalone script in `apps/api/`, separate from the dev server.
 - Loads a **plain-text** scenario file given as a CLI argument: `npm run scenario -- path/to/scenario.txt`.
 - Runs the scenario against the Engine directly.
 - Scenario file format: to be defined.
@@ -77,12 +80,12 @@ npm workspaces, run from the repo root. **None of these exist yet — to be crea
 ## Folder structure
 ```
 web/                        Angular client
-api/                        NestJS API, Engine, scenario runner
-api/database/migrations/    TypeORM migrations
+apps/api/                   NestJS API, Engine, scenario runner
+apps/api/database/migrations/  TypeORM migrations
 diagrams/                   Excalidraw diagrams (source of truth)
 .claude/rules/              Path-scoped rules for Claude
 ```
-SQLite file location: to be decided.
+SQLite file location: `apps/api/data/fleet.sqlite`, set via `DB_PATH` in `apps/api/.env` (see `.env.example`).
 
 ## Coding standards
 - TypeScript `strict` mode.
@@ -95,7 +98,7 @@ SQLite file location: to be decided.
 - **NestJS layering**: module → controller → service. Controllers handle HTTP only; logic lives in services.
 - **DTO validation** on all incoming request bodies.
 - **TypeORM entities** mirror the DB entities diagram.
-- **Schema changes only via migrations** in `api/database/migrations/`. `synchronize: false`, always.
+- **Schema changes only via migrations** in `apps/api/database/migrations/`. `synchronize: false`, always.
 - **Engine** is callable both through the API (HTTP) and directly by the scenario runner — keep it independent of HTTP concerns.
 - **Command queue**: FIFO, one per robot.
 - **Tick-based engine**: state advances one tick at a time (Step, or continuously via Play).
@@ -103,6 +106,6 @@ SQLite file location: to be decided.
 
 ## Rules files
 Path-scoped rules in `.claude/rules/` load when working on matching files:
-- `backend.md` — `api/**`
-- `database.md` — `api/database/**`, `api/**/*.entity.ts`
+- `backend.md` — `apps/api/**`
+- `database.md` — `apps/api/database/**`, `apps/api/**/*.entity.ts`
 - `frontend.md` — `web/**`

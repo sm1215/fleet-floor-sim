@@ -1,6 +1,6 @@
 ---
 paths:
-  - "api/**"
+  - "apps/api/**"
 ---
 
 # Backend rules (NestJS)
