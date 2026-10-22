@@ -25,7 +25,7 @@ A lightweight robot fleet floor simulator, built quickly. The Excalidraw diagram
 - Cells are Open or Obstacle. Robots show their ID and a direction arrow.
 - **Edit mode**: clicking a cell toggles it between Open and Obstacle.
 - **Non-edit mode**: clicking a cell places a robot.
-- Controls (only enabled when a robot is selected): Move, Turn Left, Turn Right — also bound to arrow keys.
+- Controls (only enabled when a robot is selected): Move, Turn Left, Turn Right — also bound to arrow keys. Delete removes the selected robot (button only).
 - Step, Play / Pause.
 - Per-robot queue panel showing queued commands (FIFO).
 - Log button opens a modal with the full text history of user interactions and tick results.
@@ -83,8 +83,8 @@ API-only: `npm run test:e2e -w apps/api` runs the e2e tests (`apps/api/test/`).
 apps/web/                   Angular client
 apps/api/                   NestJS API, scenario runner
 apps/api/database/migrations/  TypeORM migrations
-apps/engine/                Engine (tick loop, step)
-apps/queue/                 Queue (doNext: next command per robot)
+apps/api/src/engine/        Engine (tick loop, step)
+apps/api/src/queue/         Queue (doNext: next command per robot)
 diagrams/                   Excalidraw diagrams (source of truth)
 .claude/rules/              Path-scoped rules for Claude
 ```
@@ -110,11 +110,11 @@ SQLite file location: `apps/api/data/fleet.sqlite`, set via `DB_PATH` in `apps/a
 ## Rules files
 Path-scoped rules in `.claude/rules/` load when working on matching files:
 - `backend.md` — `apps/api/**`
-- `commands.md` — `apps/api/**`, `apps/engine/**`, `apps/queue/**`
+- `commands.md` — `apps/api/**`
 - `database.md` — `apps/api/database/**`, `apps/api/**/*.entity.ts`
 - `frontend.md` — `apps/web/**`
 - `floor-grid.md` — `apps/web/src/app/components/grid/**`
 - `edit-mode.md` — `apps/web/src/app/app.*`, `components/button/**`, `components/grid/**`, `components/cell/**`
 - `robot-rules.md` — `apps/web/src/app/app.*`, `components/robot/**`, `components/grid/**`, `components/cell/**`, `components/queue-panel/**`, `services/simulation-api.service.ts`, `models/direction.ts`, `models/robot.model.ts`
-- `engine.md` — `apps/engine/**`
-- `queue.md` — `apps/queue/**`
+- `engine.md` — `apps/api/src/engine/**`
+- `queue.md` — `apps/api/src/queue/**`

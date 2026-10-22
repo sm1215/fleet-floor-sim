@@ -4,32 +4,84 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
-import { Cell, Floor, Robot } from '../../database/entities/index.js';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import {
+  Cell,
+  Floor,
+  LogEntry,
+  QueuedCommand,
+  Robot,
+} from '../../database/entities/index.js';
+import { EngineService } from '../engine/engine.service.js';
 import { CreateFloorDto } from './dto/create-floor.dto.js';
 import { UpdateFloorDto } from './dto/update-floor.dto.js';
-import { planResize, RESIZE_NO_ROOM } from './floor.model.js';
+import {
+  DEFAULT_FLOOR_SIZE,
+  planResize,
+  RESIZE_NO_ROOM,
+} from './floor.model.js';
 
 @Injectable()
 export class FloorService {
   constructor(
     @InjectRepository(Floor) private readonly repo: Repository<Floor>,
     private readonly dataSource: DataSource,
+    private readonly engine: EngineService,
   ) {}
 
   create(dto: CreateFloorDto): Promise<Floor> {
     return this.dataSource.transaction(async (manager) => {
       const floor = await manager.getRepository(Floor).save(dto);
-      const cells = manager.getRepository(Cell);
-      const rows: Partial<Cell>[] = [];
-      for (let y = 0; y < floor.height; y++) {
-        for (let x = 0; x < floor.width; x++) {
-          rows.push({ obstacle: false, xPosition: x, yPosition: y, floor });
-        }
-      }
-      await cells.insert(rows);
+      await this.insertOpenCells(manager, floor);
       return floor;
     });
+  }
+
+  /**
+   * Pauses the engine at tick 0, then empties the floor (queued commands,
+   * robots, cells) and the whole log, and rebuilds it as an all-Open
+   * DEFAULT_FLOOR_SIZE square. The floor keeps its id.
+   */
+  async reset(id: number): Promise<Floor> {
+    await this.findOne(id);
+    await this.engine.reset();
+    await this.dataSource.transaction(async (manager) => {
+      const robotRepo = manager.getRepository(Robot);
+      const robotIds = (
+        await robotRepo.find({
+          select: { id: true },
+          where: { cell: { floor: { id } } },
+        })
+      ).map((r) => r.id);
+      if (robotIds.length > 0) {
+        await manager
+          .getRepository(QueuedCommand)
+          .delete({ robot: { id: In(robotIds) } });
+        await robotRepo.delete({ id: In(robotIds) });
+      }
+      await manager.getRepository(Cell).delete({ floor: { id } });
+      await manager.getRepository(LogEntry).clear();
+      const floor = await manager.getRepository(Floor).save({
+        id,
+        width: DEFAULT_FLOOR_SIZE,
+        height: DEFAULT_FLOOR_SIZE,
+      });
+      await this.insertOpenCells(manager, floor);
+    });
+    return this.findOne(id);
+  }
+
+  private async insertOpenCells(
+    manager: EntityManager,
+    floor: Floor,
+  ): Promise<void> {
+    const rows: Partial<Cell>[] = [];
+    for (let y = 0; y < floor.height; y++) {
+      for (let x = 0; x < floor.width; x++) {
+        rows.push({ obstacle: false, xPosition: x, yPosition: y, floor });
+      }
+    }
+    await manager.getRepository(Cell).insert(rows);
   }
 
   findAll(): Promise<Floor[]> {

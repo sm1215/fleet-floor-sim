@@ -1,7 +1,6 @@
 {
   "name": "fleet-floor-sim",
   "private": true,
-  "type": "module",
   "workspaces": [
     "apps/*"
   ],

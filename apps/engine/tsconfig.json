@@ -1,8 +1,0 @@
-{
-  "extends": "../api/tsconfig.json",
-  "compilerOptions": {
-    "rootDir": "..",
-    "noEmit": true
-  },
-  "include": ["**/*.ts", "../queue/**/*.ts"]
-}

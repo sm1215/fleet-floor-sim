@@ -2,14 +2,16 @@ import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
-import { AppModule } from './../src/app.module.js';
+import { featureModules } from './../src/app.module.js';
+import { sqliteTestDb } from './sqlite-test-db.js';
 
 describe('Engine (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeEach(async () => {
     const moduleFixture = await Test.createTestingModule({
-      imports: [AppModule],
+      // Step reads the queue, so the DB needs the migrated schema.
+      imports: [sqliteTestDb(':memory:'), ...featureModules],
     }).compile();
     app = moduleFixture.createNestApplication();
     await app.init();

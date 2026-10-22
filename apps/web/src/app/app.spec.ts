@@ -54,10 +54,12 @@ describe('App', () => {
     | 'getFloors'
     | 'createFloor'
     | 'updateFloor'
+    | 'resetFloor'
     | 'getCells'
     | 'updateCell'
     | 'getRobots'
     | 'createRobot'
+    | 'deleteRobot'
     | 'getQueuedCommands'
     | 'createQueuedCommand'
     | 'getEngine'
@@ -71,6 +73,7 @@ describe('App', () => {
       getFloors: vi.fn(() => of([{ id: 1, width: 5, height: 5 }])),
       createFloor: vi.fn(),
       updateFloor: vi.fn(),
+      resetFloor: vi.fn(() => of({ id: 1, width: 5, height: 5 })),
       getCells: vi.fn(() => of(makeCells(5, 5))),
       updateCell: vi.fn(),
       getRobots: vi.fn(() =>
@@ -80,6 +83,7 @@ describe('App', () => {
         ]),
       ),
       createRobot: vi.fn(),
+      deleteRobot: vi.fn(() => of(undefined)),
       getQueuedCommands: vi.fn((robotId: number) => of(queues[robotId] ?? [])),
       createQueuedCommand: vi.fn((robotId: number, command: CommandName) =>
         of({ id: 100, command, params: null, robotId }),
@@ -288,6 +292,20 @@ describe('App', () => {
       expect(errorTexts(el)).toEqual(['Command failed to queue.']);
     });
 
+    it('a failed delete shows "Robot failed to delete."; the robot stays selected', async () => {
+      api.deleteRobot.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+      const fixture = await setup();
+      const el = fixture.nativeElement as HTMLElement;
+      robotEl(el, 7).click();
+      await fixture.whenStable();
+      buttonNamed(el, 'Delete')!.click();
+      await fixture.whenStable();
+      expect(robotEl(el, 7)).toBeDefined();
+      expect(robotEl(el, 7).querySelector('.robot')!.classList).toContain('border-green-300');
+      expect(queueItems(el)).toEqual(['MOVE', 'LEFT']);
+      expect(errorTexts(el)).toEqual(['Robot failed to delete.']);
+    });
+
     it('a failed placement shows "Robot failed to place."', async () => {
       api.getRobots.mockReturnValue(of([]));
       api.createRobot.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 400 })));
@@ -369,9 +387,9 @@ describe('App', () => {
       return robotEl(el, id).querySelector('.robot')!.classList.contains('border-green-300');
     }
 
-    it('no selection → Move / Turn Left / Turn Right disabled; arrow keys send nothing', async () => {
+    it('no selection → Move / Turn Left / Turn Right / Delete disabled; arrow keys send nothing', async () => {
       const { el } = await selected();
-      for (const label of ['Move', 'Turn Left', 'Turn Right']) {
+      for (const label of ['Move', 'Turn Left', 'Turn Right', 'Delete']) {
         expect(buttonNamed(el, label)!.disabled).toBe(true);
       }
       for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowUp']) {
@@ -382,7 +400,7 @@ describe('App', () => {
 
     it('a selection enables the command buttons', async () => {
       const { el } = await selected(7);
-      for (const label of ['Move', 'Turn Left', 'Turn Right']) {
+      for (const label of ['Move', 'Turn Left', 'Turn Right', 'Delete']) {
         expect(buttonNamed(el, label)!.disabled).toBe(false);
       }
     });
@@ -470,6 +488,34 @@ describe('App', () => {
       expect(queueItems(el)).toEqual(['RIGHT']);
     });
 
+    it('Delete → DELETE the selected robot; it leaves the grid, the selection and queue clear', async () => {
+      const { fixture, el } = await selected(7);
+      buttonNamed(el, 'Delete')!.click();
+      await fixture.whenStable();
+      expect(api.deleteRobot).toHaveBeenCalledExactlyOnceWith(7);
+      expect(robotEl(el, 7)).toBeUndefined();
+      expect(robotEl(el, 8)).toBeDefined();
+      expect(queueItems(el)).toEqual([]);
+      for (const label of ['Move', 'Turn Left', 'Turn Right', 'Delete']) {
+        expect(buttonNamed(el, label)!.disabled).toBe(true);
+      }
+    });
+
+    it('a delete that succeeds after switching robots keeps the new selection', async () => {
+      const pending = new Subject<void>();
+      api.deleteRobot.mockReturnValueOnce(pending);
+      const { fixture, el } = await selected(7);
+      buttonNamed(el, 'Delete')!.click();
+      robotEl(el, 8).click();
+      await fixture.whenStable();
+      pending.next();
+      pending.complete();
+      await fixture.whenStable();
+      expect(robotEl(el, 7)).toBeUndefined();
+      expect(isSelected(el, 8)).toBe(true);
+      expect(queueItems(el)).toEqual(['RIGHT']);
+    });
+
     it('a queue that arrives after switching robots is ignored', async () => {
       const late = new Subject<QueuedCommand[]>();
       api.getQueuedCommands.mockReturnValueOnce(late);
@@ -488,6 +534,11 @@ describe('App', () => {
     }
 
     afterEach(() => vi.useRealTimers());
+
+    /** The Play / Pause button, whichever label it shows. */
+    function playPause(el: HTMLElement): HTMLButtonElement {
+      return (buttonNamed(el, 'Play') ?? buttonNamed(el, 'Pause'))!;
+    }
 
     it('loads the engine state on start', async () => {
       await setup();
@@ -523,21 +574,21 @@ describe('App', () => {
       const step = () => buttonNamed(fixture.nativeElement, 'Step')!;
       expect(step().disabled).toBe(false);
 
-      buttonNamed(fixture.nativeElement, 'Play / Pause')!.click();
+      playPause(fixture.nativeElement).click();
       await fixture.whenStable();
       expect(step().disabled).toBe(true);
       step().click();
       expect(api.stepEngine).not.toHaveBeenCalled();
 
       api.toggleEngine.mockReturnValue(of(engineState({ running: false })));
-      buttonNamed(fixture.nativeElement, 'Play / Pause')!.click();
+      playPause(fixture.nativeElement).click();
       await fixture.whenStable();
       expect(step().disabled).toBe(false);
     });
 
-    it('Play / Pause → POST /engine/toggle', async () => {
+    it('Play → POST /engine/toggle', async () => {
       const fixture = await setup();
-      buttonNamed(fixture.nativeElement, 'Play / Pause')!.click();
+      playPause(fixture.nativeElement).click();
       expect(api.toggleEngine).toHaveBeenCalledTimes(1);
     });
 
@@ -545,7 +596,7 @@ describe('App', () => {
       vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
       const fixture = await setup();
       api.getEngine.mockReturnValue(of(engineState({ running: true, errors: ['boom'] })));
-      buttonNamed(fixture.nativeElement, 'Play / Pause')!.click();
+      playPause(fixture.nativeElement).click();
       await vi.advanceTimersByTimeAsync(999);
       expect(api.getEngine).toHaveBeenCalledTimes(1);
       await vi.advanceTimersByTimeAsync(1);
@@ -557,9 +608,9 @@ describe('App', () => {
     it('stops polling once paused', async () => {
       vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
       const fixture = await setup();
-      buttonNamed(fixture.nativeElement, 'Play / Pause')!.click();
+      playPause(fixture.nativeElement).click();
       api.toggleEngine.mockReturnValue(of(engineState({ running: false })));
-      buttonNamed(fixture.nativeElement, 'Play / Pause')!.click();
+      playPause(fixture.nativeElement).click();
       await vi.advanceTimersByTimeAsync(5000);
       expect(api.getEngine).toHaveBeenCalledTimes(1);
     });
@@ -570,6 +621,191 @@ describe('App', () => {
       await setup();
       await vi.advanceTimersByTimeAsync(1000);
       expect(api.getEngine).toHaveBeenCalledTimes(2);
+    });
+
+    it('the button reads Play while paused and Pause while running', async () => {
+      const fixture = await setup();
+      const el = fixture.nativeElement as HTMLElement;
+      expect(buttonNamed(el, 'Play')).toBeDefined();
+      expect(buttonNamed(el, 'Pause')).toBeUndefined();
+
+      buttonNamed(el, 'Play')!.click();
+      await fixture.whenStable();
+      expect(buttonNamed(el, 'Pause')).toBeDefined();
+      expect(buttonNamed(el, 'Play')).toBeUndefined();
+
+      api.toggleEngine.mockReturnValue(of(engineState({ running: false })));
+      buttonNamed(el, 'Pause')!.click();
+      await fixture.whenStable();
+      expect(buttonNamed(el, 'Play')).toBeDefined();
+    });
+
+    it('reads Pause on load when the engine is already running', async () => {
+      api.getEngine.mockReturnValue(of(engineState({ running: true })));
+      const fixture = await setup();
+      expect(buttonNamed(fixture.nativeElement, 'Pause')).toBeDefined();
+    });
+
+    it('after a Step, the grid gets the new tick and reloads its robots', async () => {
+      const fixture = await setup();
+      const grid = fixture.debugElement.query(By.directive(Grid)).componentInstance as Grid;
+      buttonNamed(fixture.nativeElement, 'Step')!.click();
+      await fixture.whenStable();
+      expect(grid.tick()).toBe(1);
+      expect(api.getRobots).toHaveBeenCalledTimes(2);
+    });
+
+    it('after a Step, the selected robot’s queue is reloaded', async () => {
+      const fixture = await setup();
+      const el = fixture.nativeElement as HTMLElement;
+      robotEl(el, 7).click();
+      await fixture.whenStable();
+      expect(queueItems(el)).toEqual(['MOVE', 'LEFT']);
+
+      api.getQueuedCommands.mockReturnValue(of([queues[7][1]]));
+      buttonNamed(el, 'Step')!.click();
+      await fixture.whenStable();
+      expect(api.getQueuedCommands).toHaveBeenLastCalledWith(7);
+      expect(queueItems(el)).toEqual(['LEFT']);
+    });
+
+    it('a polled tick change reloads the queue; the same tick does not', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      const fixture = await setup();
+      const el = fixture.nativeElement as HTMLElement;
+      robotEl(el, 7).click();
+      await fixture.whenStable();
+      expect(api.getQueuedCommands).toHaveBeenCalledTimes(1);
+
+      api.toggleEngine.mockReturnValue(of(engineState({ running: true })));
+      api.getEngine.mockReturnValue(of(engineState({ running: true, currentTick: 1 })));
+      playPause(el).click();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(api.getQueuedCommands).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(api.getQueuedCommands).toHaveBeenCalledTimes(2);
+    });
+
+    it('no robot selected → a tick loads no queue', async () => {
+      const fixture = await setup();
+      buttonNamed(fixture.nativeElement, 'Step')!.click();
+      await fixture.whenStable();
+      expect(api.getQueuedCommands).not.toHaveBeenCalled();
+    });
+
+    describe('Reset All', () => {
+      let confirmSpy: ReturnType<typeof vi.fn<(message?: string) => boolean>>;
+
+      beforeEach(() => {
+        confirmSpy = vi.fn<(message?: string) => boolean>(() => true);
+        vi.stubGlobal('confirm', confirmSpy);
+        // The reset floor has no robots.
+        api.resetFloor.mockImplementation(() => {
+          api.getRobots.mockReturnValue(of([]));
+          return of({ id: 1, width: 5, height: 5 });
+        });
+      });
+
+      afterEach(() => vi.unstubAllGlobals());
+
+      it('sits right after Log in the top bar', async () => {
+        const fixture = await setup();
+        const labels = Array.from(
+          (fixture.nativeElement as HTMLElement).querySelectorAll('.area-top button'),
+        ).map((b) => b.textContent!.trim());
+        expect(labels.indexOf('Reset All')).toBe(labels.indexOf('Log') + 1);
+      });
+
+      it('asks "Reset the entire floor?"', async () => {
+        const fixture = await setup();
+        buttonNamed(fixture.nativeElement, 'Reset All')!.click();
+        expect(confirmSpy).toHaveBeenCalledExactlyOnceWith('Reset the entire floor?');
+      });
+
+      it('No → no request; robots and selection unchanged', async () => {
+        confirmSpy.mockReturnValue(false);
+        const fixture = await setup();
+        const el = fixture.nativeElement as HTMLElement;
+        robotEl(el, 7).click();
+        await fixture.whenStable();
+        buttonNamed(el, 'Reset All')!.click();
+        await fixture.whenStable();
+        expect(api.resetFloor).not.toHaveBeenCalled();
+        expect(robotEl(el, 7)).toBeDefined();
+        expect(buttonNamed(el, 'Move')!.disabled).toBe(false);
+        expect(queueItems(el)).toEqual(['MOVE', 'LEFT']);
+      });
+
+      it('Yes → resetFloor(1); robots gone, selection and queue clear; engine state re-read', async () => {
+        const fixture = await setup();
+        const el = fixture.nativeElement as HTMLElement;
+        robotEl(el, 7).click();
+        await fixture.whenStable();
+        buttonNamed(el, 'Reset All')!.click();
+        await fixture.whenStable();
+        expect(api.resetFloor).toHaveBeenCalledExactlyOnceWith(1);
+        expect(el.querySelectorAll('app-robot')).toHaveLength(0);
+        expect(queueItems(el)).toEqual([]);
+        for (const label of ['Move', 'Turn Left', 'Turn Right', 'Delete']) {
+          expect(buttonNamed(el, label)!.disabled).toBe(true);
+        }
+        expect(api.getEngine).toHaveBeenCalledTimes(2);
+      });
+
+      it('while running, Yes → Play label, Step enabled, polling stops', async () => {
+        vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+        api.getEngine.mockReturnValue(of(engineState({ running: true, currentTick: 3 })));
+        const fixture = await setup();
+        const el = fixture.nativeElement as HTMLElement;
+        expect(buttonNamed(el, 'Pause')).toBeDefined();
+
+        api.getEngine.mockReturnValue(of(engineState()));
+        buttonNamed(el, 'Reset All')!.click();
+        await fixture.whenStable();
+        expect(buttonNamed(el, 'Play')).toBeDefined();
+        expect(buttonNamed(el, 'Step')!.disabled).toBe(false);
+        const calls = api.getEngine.mock.calls.length;
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(api.getEngine).toHaveBeenCalledTimes(calls);
+      });
+
+      it('while running, No → still Pause; nothing sent; polling continues', async () => {
+        vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+        confirmSpy.mockReturnValue(false);
+        api.getEngine.mockReturnValue(of(engineState({ running: true })));
+        const fixture = await setup();
+        const el = fixture.nativeElement as HTMLElement;
+        buttonNamed(el, 'Reset All')!.click();
+        await fixture.whenStable();
+        expect(buttonNamed(el, 'Pause')).toBeDefined();
+        expect(api.resetFloor).not.toHaveBeenCalled();
+        expect(api.toggleEngine).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(api.getEngine).toHaveBeenCalledTimes(2);
+      });
+
+      it('reset fails → "Floor failed to reset." shows; grid unchanged', async () => {
+        api.resetFloor.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 0 })));
+        const fixture = await setup();
+        const el = fixture.nativeElement as HTMLElement;
+        buttonNamed(el, 'Reset All')!.click();
+        await fixture.whenStable();
+        expect(errorTexts(el)).toEqual(['Floor failed to reset.']);
+        expect(robotEl(el, 7)).toBeDefined();
+        expect(el.querySelectorAll('app-cell')).toHaveLength(25);
+      });
+
+      it('reset fails while running → engine state re-read; the label follows it', async () => {
+        api.getEngine.mockReturnValue(of(engineState({ running: true })));
+        api.resetFloor.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+        const fixture = await setup();
+        const el = fixture.nativeElement as HTMLElement;
+        api.getEngine.mockReturnValue(of(engineState()));
+        buttonNamed(el, 'Reset All')!.click();
+        await fixture.whenStable();
+        expect(api.getEngine).toHaveBeenCalledTimes(2);
+        expect(buttonNamed(el, 'Play')).toBeDefined();
+      });
     });
   });
 });

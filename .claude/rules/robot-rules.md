@@ -62,6 +62,14 @@ paths:
 - ArrowLeft / ArrowRight / ArrowUp do the same while a robot is selected.
 - API: `COMMANDS` = `['MOVE', 'LEFT', 'RIGHT']`. `params` is optional on `CreateQueuedCommandDto`.
 
+## Delete
+
+- A Delete button sits after Move, enabled only while a robot is selected. No keyboard shortcut, no confirmation.
+- Click → `DELETE /robots/:id` with the selected robot's Id. Allowed while the engine is playing.
+- The API deletes the robot's queued commands and the robot in one transaction.
+- Success → the robot leaves the grid; if it is still selected, the selection and queue panel clear.
+- Failure → nothing changes and `Robot failed to delete.` shows (see Errors in `frontend.md`).
+
 ## Queue panel
 
 - Selecting a robot sends `GET /robots/:id/queued-commands` and shows the result in FIFO order (ascending Id).
@@ -106,10 +114,14 @@ Client (`grid.spec.ts`):
 - Init `GET /robots` → robots render at their cell x/y with their direction.
 - Robot click in edit mode → selects it; no `PATCH /cells`.
 - Robot click in non-edit mode → selects it; no `POST /robots`.
+- `removeRobot(id)` → that robot is no longer rendered; others stay.
 
 Client (`app.spec.ts`):
 
-- No selection → Move / Turn Left / Turn Right disabled, and arrow keys send nothing.
+- No selection → Move / Turn Left / Turn Right / Delete disabled, and arrow keys send nothing.
+- Delete → `DELETE /robots/:id` for the selected robot; it leaves the grid; selection and queue clear.
+- Delete success after switching robots → the new selection stays.
+- Delete failure → robot stays selected, queue unchanged, `Robot failed to delete.` shown.
 - Select a robot, click it again to deselect, click another to switch.
 - Buttons and arrow keys POST the matching uppercase command with the selected robot's Id.
 - Selecting a robot → `GET /robots/:id/queued-commands`; commands shown in order.
@@ -125,6 +137,7 @@ API (`robot.service.spec.ts`):
 - Create on an Obstacle cell → rejected; nothing created.
 - Create on an occupied cell → rejected; nothing created.
 - `findAll` includes each robot's cell x/y.
+- `remove` deletes the robot and only its queued commands.
 
 API (queued-command service spec / DTO):
 
@@ -137,3 +150,4 @@ API e2e (`apps/api/test/`):
 
 - A created robot is returned by `GET /robots` with its cell and direction after an app restart
   (new app instance, same DB file).
+- `DELETE /robots/:id` on a robot with queued commands → 200; gone from `GET /robots`, its queue is empty.

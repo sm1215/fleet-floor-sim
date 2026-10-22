@@ -85,3 +85,23 @@ Engine review result: with fixes. Critical: stray tsc output (.js/.d.ts/.map) in
 Applied review fixes. User chose: delete stray build files, gitignore them, fix pause/resume timer (run counter + test), and Step while running -> API 400 + Step disabled in UI. Updated engine.md. Deleting the files was blocked by permissions; user to delete. Tests API 114 / web 134 pass; lint fails only on the stray .d.ts. Not committed.
 
 User deleted the stray build files. Reran: tests API 114 / web 134 pass against the .ts sources; lint passes for API and web. Not committed.
+
+User updated queue.md doNext rule (returns the found commands). Updated its Testing list to match. Planned doNext impl: user chose Robot displayId column (unique, auto = id), queue moved into Nest at apps/api/src/queue, doNext(): Promise<Promise<{robot, command} | null>[]> (one promise per robot, null for empty/unparseable), Engine gets doNext injected. Executing commands out of scope. Plan: .claude/plans/queue-do-next-impl-plan.md. Not committed.
+
+Executed queue plan natively (user chose to continue over a parallel session's engine-execution-plan). Kept -1 placeholder for displayId = id. Added displayId + backfill migration, 409 on duplicate; QueueModule/QueueService.doNext (one promise per robot, null for empty/unparseable); Engine merged into EngineService (awaits all promises). Updated rules/CLAUDE.md. Duplicate migration + apps/engine, apps/queue deletion blocked; user to delete. API 121 / web 134 / e2e 16 pass; build ok. Not committed.
+
+Play/Pause now reads Play/Pause by state; grid reloads robots and queue panel reloads on each tick. Pending work: user chose engine in Nest calling its own LEFT/RIGHT/MOVE functions in-process, one batched moveAll per tick; block reasons returned only (user adds reporting later). Waited for a parallel session (queue/displayId); restored its lost displayId migration; removed duplicate placeholders. Config reverted. API 140/e2e 16/web 143 pass. Not committed.
+
+User asked to run the migration without committing. Ran npm run db:migrate: RobotDisplayId1792699307727 applied to the dev DB; robot.display_id backfilled from id. Not committed.
+
+User asked for a plan: Delete button beside the movement controls, enabled only with a robot selected, sends DELETE /robots/:id. User chose: service deletes queued commands with the robot in one transaction (no migration), no keyboard shortcut, no confirm, allowed while playing. Plan saved to .claude/plans/delete-robot-button-plan.md. Not implemented.
+
+Implemented the Delete button plan. RobotService.remove deletes queued commands + robot in one transaction. Web: deleteRobot(), Grid.removeRobot(), App onDelete (clears selection/queue if still selected; Robot failed to delete. on error). Delete button after Move, disabled with no selection. Updated robot-rules.md, CLAUDE.md. Lint ok; API 141 / e2e 17 / web 148 pass; build ok. Not committed.
+
+User asked for a plan: Reset All button after Log; confirm "Reset the entire floor?"; Yes resets floor. User chose: new POST /floors/:id/reset (in place, same id), clear all LogEntry rows, pause engine + tick 0, browser confirm(). Floor → 5x5 all Open; robots/queued commands/cells deleted. Plan saved to .claude/plans/reset-all-button-plan.md. Not implemented.
+
+User clarified: Reset All must stop Play and the button must revert to Play. User chose: stop only after Yes (No leaves it playing). Plan updated: client re-reads engine state after reset success or failure so the label always matches the server; added tests for No-while-running and failed reset.
+
+User asked to center the robot movement controls at the bottom. User chose: centered in the layout's last row (not fixed to viewport). Wide layout: controls area now spans both columns (`controls controls`); buttons centered with justify-center. Narrow layout unchanged apart from centering. Not committed.
+
+Implemented Reset All (native). API: EngineService.reset() (async, waits for an in-flight tick), FloorService.reset + POST /floors/:id/reset. Web: resetFloor(), Grid.resetFloor() (drops in-flight resize), App onResetAll with confirm, re-reads engine on success/failure. Review fixed 2 races. Updated frontend.md. Lint ok; API 150 / e2e 18 / web 160 pass; build ok. Not committed.

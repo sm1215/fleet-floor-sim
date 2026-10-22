@@ -12,3 +12,7 @@
 #### The request for a full log to be shown in the UI
 > I'm choosing to include this functionality in a standalone modal because it could be an extensive list and I can enable vertical scrolling in a contained height with a modal setup.
 
+#### There's not an easy way to clear robots because I've purposefully built everything to persist.
+> I'm adding a delete button for individual robots, and a reset button for the entire floor to reload from a default state. I'm preferring for the reset to perform as clean of a reset as possible, where the robots are delete, the associated log history, and the cells are recreated so obstacles are also cleared. The floor itself can persist in the db, but it will revert to the default size. I'm leaving the floor exist because it's a reset button, as opposed to a "New" button. So, a small distinction.
+
+#### Making a choice to show planar labels on the grid so its easier to identify robot positioning

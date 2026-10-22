@@ -9,8 +9,19 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { catchError, EMPTY, map, Observable, of, Subject, switchMap } from 'rxjs';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import {
+  catchError,
+  EMPTY,
+  map,
+  Observable,
+  of,
+  skip,
+  Subject,
+  switchMap,
+  takeUntil,
+  tap,
+} from 'rxjs';
 import { Cell as CellModel } from '../../models/cell.model';
 import { Floor, FloorSize } from '../../models/floor.model';
 import { Robot } from '../../models/robot.model';
@@ -35,15 +46,20 @@ interface LoadedFloor {
   selector: 'app-grid',
   imports: [Cell],
   templateUrl: './grid.html',
-  host: { class: 'block' },
+  /** contents: the slider row and floor are placed directly in App's layout grid. */
+  host: { class: 'contents' },
 })
 export class Grid implements OnInit {
   private readonly api = inject(SimulationApiService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly sizeChanges = new Subject<FloorSize>();
+  /** Fires on resetFloor(); a resize still in flight is dropped. */
+  private readonly resets = new Subject<void>();
 
   readonly editMode = input(false);
   readonly selectedRobotId = input<number | null>(null);
+  /** The engine's current tick; each change reloads the robots. */
+  readonly tick = input(0);
   readonly gridError = output<string>();
   readonly robotClicked = output<number>();
 
@@ -77,6 +93,8 @@ export class Grid implements OnInit {
   protected readonly columnLabels = computed(() =>
     Array.from({ length: this.floor()?.width ?? 0 }, (_, i) => i),
   );
+
+  private readonly tickChanges = toObservable(this.tick);
 
   protected readonly robotsByCell = computed(
     () => new Map(this.robots().map((robot) => [robot.cellId, robot])),
@@ -112,11 +130,32 @@ export class Grid implements OnInit {
               this.gridError.emit(conflict ? RESIZE_ERROR : SERVER_ERROR);
               return EMPTY;
             }),
+            takeUntil(this.resets),
           ),
         ),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe((loaded) => this.show(loaded));
+
+    this.reloadRobotsOnTick();
+  }
+
+  /** A tick can turn and move robots: reload them (skips the initial value). */
+  private reloadRobotsOnTick(): void {
+    this.tickChanges
+      .pipe(
+        skip(1),
+        switchMap(() =>
+          this.api.getRobots().pipe(
+            catchError(() => {
+              this.gridError.emit(SERVER_ERROR);
+              return EMPTY;
+            }),
+          ),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((robots) => this.robots.set(robots));
   }
 
   protected onSizeChange(): void {
@@ -149,6 +188,23 @@ export class Grid implements OnInit {
           error: () => this.gridError.emit(PLACE_ERROR),
         });
     }
+  }
+
+  /** Resets the floor on the API, then shows it. Errors are left to the caller. */
+  resetFloor(): Observable<void> {
+    const floor = this.floor();
+    if (!floor) return EMPTY;
+    this.resets.next();
+    return this.api.resetFloor(floor.id).pipe(
+      switchMap((reset) => this.withCells(reset)),
+      tap((loaded) => this.show(loaded)),
+      map(() => undefined),
+    );
+  }
+
+  /** Drops a deleted robot from the grid. */
+  removeRobot(id: number): void {
+    this.robots.update((robots) => robots.filter((robot) => robot.id !== id));
   }
 
   /** Loads cells, then robots: a resize can move robots to other cells. */

@@ -46,6 +46,13 @@ describe('SimulationApiService', () => {
     req.flush({ id: 3, width: 7, height: 2 });
   });
 
+  it('resetFloor → POST /floors/:id/reset', () => {
+    service.resetFloor(1).subscribe();
+    const req = http.expectOne(`${api}/floors/1/reset`);
+    expect(req.request.method).toBe('POST');
+    req.flush({ id: 1, width: 5, height: 5 });
+  });
+
   it('getCells → GET /cells, keeps the floor’s cells and maps floor.id to floorId', () => {
     let result: Cell[] = [];
     service.getCells(2).subscribe((cells) => (result = cells));
@@ -118,6 +125,15 @@ describe('SimulationApiService', () => {
       { id: 1, command: 'MOVE', params: null, robotId: 5 },
       { id: 2, command: 'LEFT', params: null, robotId: 5 },
     ]);
+  });
+
+  it('deleteRobot → DELETE /robots/:id', () => {
+    let done = false;
+    service.deleteRobot(5).subscribe(() => (done = true));
+    const req = http.expectOne(`${api}/robots/5`);
+    expect(req.request.method).toBe('DELETE');
+    req.flush(null);
+    expect(done).toBe(true);
   });
 
   it('createQueuedCommand → POST /queued-commands with robotId and command', () => {

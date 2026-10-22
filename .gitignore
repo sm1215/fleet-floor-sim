@@ -6,13 +6,6 @@ dist/
 out-tsc/
 build/
 *.tsbuildinfo
-# Stray tsc output next to engine/queue sources (they ship as .ts only)
-apps/engine/**/*.js
-apps/engine/**/*.d.ts
-apps/engine/**/*.js.map
-apps/queue/**/*.js
-apps/queue/**/*.d.ts
-apps/queue/**/*.js.map
 
 # Angular
 .angular/

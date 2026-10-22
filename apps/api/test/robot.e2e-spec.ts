@@ -78,6 +78,17 @@ describe('Robots (e2e)', () => {
     expect(after.body).toEqual(before.body);
   });
 
+  it('returns 400 for a non-integer displayId and creates nothing', async () => {
+    const cells = await floorCells(2, 1);
+    const before = await http().get('/robots').expect(200);
+    await http()
+      .post('/robots')
+      .send({ direction: 0, cellId: cells[0].id, displayId: 'x' })
+      .expect(400);
+    const after = await http().get('/robots').expect(200);
+    expect(after.body).toEqual(before.body);
+  });
+
   it('rejects obstacle: true on a cell with a robot; the cell is unchanged', async () => {
     const [cell] = await floorCells(1, 1);
     await http()
@@ -126,6 +137,30 @@ describe('Robots (e2e)', () => {
     expect(rows.every((r) => r.params === null)).toBe(true);
   });
 
+  it('DELETE /robots/:id removes a robot that has queued commands, and its commands', async () => {
+    const [cell] = await floorCells(1, 1);
+    const robot = await http()
+      .post('/robots')
+      .send({ direction: 0, cellId: cell.id })
+      .expect(201);
+    const id = (robot.body as { id: number }).id;
+    await http()
+      .post('/queued-commands')
+      .send({ robotId: id, command: 'MOVE' })
+      .expect(201);
+
+    await http().delete(`/robots/${id}`).expect(200);
+
+    const robots = await http().get('/robots').expect(200);
+    expect((robots.body as { id: number }[]).map((r) => r.id)).not.toContain(
+      id,
+    );
+    const commands = await http()
+      .get(`/robots/${id}/queued-commands`)
+      .expect(200);
+    expect(commands.body).toEqual([]);
+  });
+
   it('a created robot is returned by GET /robots with its cell and direction after an app restart', async () => {
     const cells = await floorCells(3, 3);
     const cell = cells.find((c) => c.xPosition === 2 && c.yPosition === 1)!;
@@ -140,6 +175,7 @@ describe('Robots (e2e)', () => {
     const robots = await http().get('/robots').expect(200);
     expect(robots.body).toContainEqual({
       id,
+      displayId: id,
       direction: 1,
       cell: {
         id: cell.id,

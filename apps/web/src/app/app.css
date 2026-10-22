@@ -10,19 +10,19 @@
   grid-template-columns: max-content 200px;
   justify-content: center;
   grid-template-areas:
-    'top .'
+    'top top'
+    'sliders sliders'
     'grid queue'
     'errors .'
-    'controls .';
+    'controls controls';
 }
 
 .area-top {
   grid-area: top;
 }
 
-.area-grid {
-  grid-area: grid;
-}
+/* The grid host is display: contents; its slider row and floor are placed
+   with [grid-area:sliders] / [grid-area:grid] in grid.html. */
 
 /* Capped at the floor's max height (400px); scrolls past it. */
 .area-queue {
@@ -45,6 +45,7 @@
     grid-template-columns: max-content;
     grid-template-areas:
       'top'
+      'sliders'
       'grid'
       'errors'
       'queue'

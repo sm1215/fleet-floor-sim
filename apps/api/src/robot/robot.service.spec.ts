@@ -1,11 +1,20 @@
 import {
   BadRequestException,
+  ConflictException,
   NotFoundException,
   NotImplementedException,
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Cell, Robot } from '../../database/entities/index.js';
+import { DataSource } from 'typeorm';
+import {
+  Cell,
+  Floor,
+  QueuedCommand,
+  Robot,
+} from '../../database/entities/index.js';
+import { sqliteTestDb } from '../../test/sqlite-test-db.js';
+import { RobotModule } from './robot.module.js';
 import { RobotService } from './robot.service.js';
 
 describe('RobotService', () => {
@@ -14,6 +23,7 @@ describe('RobotService', () => {
   const row = { id: 1, ...fields, cell: { id: cellId } };
   let repo: Record<string, ReturnType<typeof vi.fn>>;
   let cellRepo: Record<string, ReturnType<typeof vi.fn>>;
+  let commandRepo: Record<string, ReturnType<typeof vi.fn>>;
   let service: RobotService;
 
   beforeEach(async () => {
@@ -24,6 +34,15 @@ describe('RobotService', () => {
       findOne: vi.fn().mockResolvedValue(row),
       remove: vi.fn().mockResolvedValue(row),
       exists: vi.fn().mockResolvedValue(false),
+      update: vi.fn().mockResolvedValue(undefined),
+    };
+    commandRepo = { delete: vi.fn().mockResolvedValue(undefined) };
+    const manager = {
+      transaction: (run: (m: object) => unknown) =>
+        run({
+          getRepository: (entity: unknown) =>
+            entity === QueuedCommand ? commandRepo : repo,
+        }),
     };
     cellRepo = {
       findOne: vi.fn().mockResolvedValue({ id: cellId, obstacle: false }),
@@ -31,7 +50,7 @@ describe('RobotService', () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
         RobotService,
-        { provide: getRepositoryToken(Robot), useValue: repo },
+        { provide: getRepositoryToken(Robot), useValue: { ...repo, manager } },
         { provide: getRepositoryToken(Cell), useValue: cellRepo },
       ],
     }).compile();
@@ -39,8 +58,16 @@ describe('RobotService', () => {
   });
 
   it('maps cellId to the cell relation on create', async () => {
-    await expect(service.create(createDto)).resolves.toEqual(row);
-    expect(repo.save).toHaveBeenCalledWith({ ...fields, cell: { id: cellId } });
+    await expect(service.create(createDto)).resolves.toEqual({
+      ...row,
+      displayId: 1,
+    });
+    expect(repo.save).toHaveBeenCalledWith({
+      ...fields,
+      displayId: -1,
+      cell: { id: cellId },
+    });
+    expect(repo.update).toHaveBeenCalledWith(1, { displayId: 1 });
   });
 
   it('rejects create on an Obstacle cell and creates nothing', async () => {
@@ -97,14 +124,15 @@ describe('RobotService', () => {
     expect(repo.save).toHaveBeenLastCalledWith({ id: 1 });
   });
 
-  it('removes a row', async () => {
+  it('removes a row and its queued commands', async () => {
     await service.remove(1);
+    expect(commandRepo.delete).toHaveBeenCalledWith({ robot: { id: 1 } });
     expect(repo.remove).toHaveBeenCalledWith(row);
   });
 });
 
 describe('RobotService engine placeholders', () => {
-  it.each(['turnLeft', 'turnRight', 'move', 'reportState'] as const)(
+  it.each(['reportState'] as const)(
     '%s is not implemented yet',
     async (method) => {
       const moduleRef = await Test.createTestingModule({
@@ -118,4 +146,78 @@ describe('RobotService engine placeholders', () => {
       await expect(service[method](1)).rejects.toThrow(NotImplementedException);
     },
   );
+});
+
+describe('RobotService displayId (SQLite)', () => {
+  let dataSource: DataSource;
+  let service: RobotService;
+  let cellIds: number[];
+
+  beforeEach(async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [sqliteTestDb(':memory:'), RobotModule],
+    }).compile();
+    dataSource = moduleRef.get(DataSource);
+    service = moduleRef.get(RobotService);
+    const floor = await dataSource
+      .getRepository(Floor)
+      .save({ width: 3, height: 1 });
+    const cells = await dataSource.getRepository(Cell).save(
+      [0, 1, 2].map((x) => ({
+        obstacle: false,
+        xPosition: x,
+        yPosition: 0,
+        floor,
+      })),
+    );
+    cellIds = cells.map((c) => c.id);
+  });
+
+  afterEach(async () => {
+    await dataSource.destroy();
+  });
+
+  it('create without displayId sets displayId = id', async () => {
+    const first = await service.create({ direction: 0, cellId: cellIds[0] });
+    const second = await service.create({ direction: 0, cellId: cellIds[1] });
+    expect(first.displayId).toBe(first.id);
+    expect(second.displayId).toBe(second.id);
+    const stored = await dataSource.getRepository(Robot).find();
+    expect(stored.every((r) => r.displayId === r.id)).toBe(true);
+  });
+
+  it('create with displayId 7 stores 7', async () => {
+    const robot = await service.create({
+      direction: 0,
+      cellId: cellIds[0],
+      displayId: 7,
+    });
+    expect(robot.displayId).toBe(7);
+    await expect(service.findOne(robot.id)).resolves.toMatchObject({
+      displayId: 7,
+    });
+  });
+
+  it('create with a displayId already in use → ConflictException', async () => {
+    await service.create({ direction: 0, cellId: cellIds[0], displayId: 4 });
+    await expect(
+      service.create({ direction: 0, cellId: cellIds[1], displayId: 4 }),
+    ).rejects.toThrow(ConflictException);
+    await expect(dataSource.getRepository(Robot).count()).resolves.toBe(1);
+  });
+
+  it('remove deletes the robot and only its queued commands', async () => {
+    const kept = await service.create({ direction: 0, cellId: cellIds[0] });
+    const gone = await service.create({ direction: 0, cellId: cellIds[1] });
+    const commands = dataSource.getRepository(QueuedCommand);
+    await commands.save([
+      { command: 'MOVE', robot: { id: kept.id } },
+      { command: 'MOVE', robot: { id: gone.id } },
+      { command: 'LEFT', robot: { id: gone.id } },
+    ]);
+    await service.remove(gone.id);
+    await expect(service.findOne(gone.id)).rejects.toThrow(NotFoundException);
+    const left = await commands.find({ relations: { robot: true } });
+    expect(left.map((c) => c.robot.id)).toEqual([kept.id]);
+  });
 });

@@ -13,6 +13,10 @@ export class Robot {
   @PrimaryGeneratedColumn()
   id: number;
 
+  /** Shown as `R<displayId>`; separate from the primary key. */
+  @Column({ name: 'display_id', type: 'integer', unique: true })
+  displayId: number;
+
   @Column({ type: 'integer' })
   direction: number;
 

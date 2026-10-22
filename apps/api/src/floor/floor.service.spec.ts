@@ -1,23 +1,31 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { Test, TestingModule } from '@nestjs/testing';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { DataSource, Repository } from 'typeorm';
-import { Cell, Robot } from '../../database/entities/index.js';
+import {
+  Cell,
+  Floor,
+  LogEntry,
+  QueuedCommand,
+  Robot,
+} from '../../database/entities/index.js';
 import { sqliteTestDb } from '../../test/sqlite-test-db.js';
+import { EngineService } from '../engine/engine.service.js';
 import { UpdateFloorDto } from './dto/update-floor.dto.js';
 import { RESIZE_NO_ROOM } from './floor.model.js';
 import { FloorModule } from './floor.module.js';
 import { FloorService } from './floor.service.js';
 
 describe('FloorService', () => {
+  let moduleRef: TestingModule;
   let dataSource: DataSource;
   let service: FloorService;
   let cells: Repository<Cell>;
   let robots: Repository<Robot>;
 
   beforeEach(async () => {
-    const moduleRef = await Test.createTestingModule({
+    moduleRef = await Test.createTestingModule({
       imports: [sqliteTestDb(':memory:'), FloorModule],
     }).compile();
     dataSource = moduleRef.get(DataSource);
@@ -52,7 +60,13 @@ describe('FloorService', () => {
 
   async function placeRobot(floorId: number, x: number, y: number) {
     const cell = await cellAt(floorId, x, y);
-    return robots.save(robots.create({ direction: 0, cell: { id: cell.id } }));
+    return robots.save(
+      robots.create({
+        direction: 0,
+        displayId: (await robots.count()) + 1,
+        cell: { id: cell.id },
+      }),
+    );
   }
 
   async function robotPos(id: number): Promise<[number, number]> {
@@ -263,5 +277,74 @@ describe('FloorService', () => {
       NotFoundException,
     );
     await expect(service.remove(9)).rejects.toThrow(NotFoundException);
+  });
+
+  describe('reset', () => {
+    it('returns a 5×5 floor with 25 Open cells', async () => {
+      const floor = await service.create({ width: 8, height: 6 });
+      await markObstacle(floor.id, 0, 0);
+      await markObstacle(floor.id, 2, 3);
+      await markObstacle(floor.id, 7, 5);
+      const reset = await service.reset(floor.id);
+      expect(reset).toMatchObject({ width: 5, height: 5 });
+      const after = await cellsOf(floor.id);
+      expect(after).toHaveLength(25);
+      expect(after.every((c) => !c.obstacle)).toBe(true);
+      const expected: string[] = [];
+      for (let x = 0; x < 5; x++) {
+        for (let y = 0; y < 5; y++) expected.push(`${x},${y}`);
+      }
+      expect(coords(after)).toEqual(expected.sort());
+    });
+
+    it('deletes robots and their queued commands', async () => {
+      const floor = await service.create({ width: 5, height: 5 });
+      const commands = dataSource.getRepository(QueuedCommand);
+      for (const [x, y] of [
+        [0, 0],
+        [1, 1],
+      ]) {
+        const robot = await placeRobot(floor.id, x, y);
+        await commands.save({ command: 'MOVE', robot: { id: robot.id } });
+      }
+      await service.reset(floor.id);
+      expect(await robots.count()).toBe(0);
+      expect(await commands.count()).toBe(0);
+    });
+
+    it('deletes all log entries', async () => {
+      const floor = await service.create({ width: 5, height: 5 });
+      const logs = dataSource.getRepository(LogEntry);
+      await logs.save([
+        { action: 'PLACE', params: '', result: 'ok' },
+        { action: 'MOVE', params: '', result: 'ok' },
+      ]);
+      await service.reset(floor.id);
+      expect(await logs.count()).toBe(0);
+    });
+
+    it('keeps the floor id', async () => {
+      const floor = await service.create({ width: 7, height: 7 });
+      const floors = dataSource.getRepository(Floor);
+      const before = await floors.count();
+      expect((await service.reset(floor.id)).id).toBe(floor.id);
+      expect(await floors.count()).toBe(before);
+    });
+
+    it('pauses the engine and sets the tick to 0', async () => {
+      const floor = await service.create({ width: 5, height: 5 });
+      const engine = moduleRef.get(EngineService);
+      engine.currentTick = 4;
+      engine.toggle();
+      await service.reset(floor.id);
+      expect(engine.getState()).toMatchObject({
+        running: false,
+        currentTick: 0,
+      });
+    });
+
+    it('throws 404 for a missing floor', async () => {
+      await expect(service.reset(999)).rejects.toThrow(NotFoundException);
+    });
   });
 });

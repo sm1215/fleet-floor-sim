@@ -35,6 +35,7 @@ describe('Grid', () => {
     getFloors: ReturnType<typeof vi.fn<() => Observable<Floor[]>>>;
     createFloor: ReturnType<typeof vi.fn<(size: FloorSize) => Observable<Floor>>>;
     updateFloor: ReturnType<typeof vi.fn<(id: number, size: FloorSize) => Observable<Floor>>>;
+    resetFloor: ReturnType<typeof vi.fn<(id: number) => Observable<Floor>>>;
     getCells: ReturnType<typeof vi.fn<(floorId: number) => Observable<Cell[]>>>;
     updateCell: ReturnType<
       typeof vi.fn<(id: number, change: Pick<Cell, 'obstacle'>) => Observable<Cell>>
@@ -44,14 +45,28 @@ describe('Grid', () => {
   };
   // The robots as the mocked API currently stores them.
   let robots: Robot[];
+  // Ids of the cells the mocked API stores as Obstacles.
+  let obstacleIds: number[];
 
   beforeEach(() => {
     server = null;
+    obstacleIds = [];
     api = {
       getFloors: vi.fn(() => of(server ? [server] : [])),
       createFloor: vi.fn((size: FloorSize) => of((server = { id: 1, ...size }))),
       updateFloor: vi.fn((id: number, size: FloorSize) => of((server = { id, ...size }))),
-      getCells: vi.fn(() => of(server ? makeCells(server) : [])),
+      resetFloor: vi.fn((id: number) => {
+        robots = [];
+        obstacleIds = [];
+        return of((server = { id, width: 5, height: 5 }));
+      }),
+      getCells: vi.fn(() =>
+        of(
+          server
+            ? makeCells(server).map((c) => ({ ...c, obstacle: obstacleIds.includes(c.id) }))
+            : [],
+        ),
+      ),
       updateCell: vi.fn((id: number, change: Pick<Cell, 'obstacle'>) =>
         of({ ...makeCells(server!).find((c) => c.id === id)!, ...change }),
       ),
@@ -398,6 +413,55 @@ describe('Grid', () => {
     });
   });
 
+  describe('resetFloor', () => {
+    it('shows the returned 5×5 floor, its cells and no robots', async () => {
+      obstacleIds = [3];
+      robots = [robot(9, 2, 1, 0)];
+      const { fixture, el } = await render(8, 6);
+      expect(cellAt(el, 2, 0).classList).toContain('obstacle');
+      expect(robotAt(el, 1, 0)).not.toBeNull();
+
+      let done = false;
+      fixture.componentInstance.resetFloor().subscribe(() => (done = true));
+      await fixture.whenStable();
+
+      expect(done).toBe(true);
+      expect(api.resetFloor).toHaveBeenCalledExactlyOnceWith(1);
+      expect(el.querySelectorAll('app-cell')).toHaveLength(25);
+      expect(el.querySelectorAll('.cell.obstacle')).toHaveLength(0);
+      expect(el.querySelectorAll('app-robot')).toHaveLength(0);
+      expect(slider(el, 'Width').value).toBe('5');
+      expect(slider(el, 'Height').value).toBe('5');
+    });
+
+    it('a resize still in flight is dropped by a reset', async () => {
+      const { fixture, el } = await render(5, 5);
+      const pending = new Subject<Floor>();
+      api.updateFloor.mockReturnValueOnce(pending);
+      drag(el, 'Width', 8);
+      release(el, 'Width');
+      await fixture.whenStable();
+      fixture.componentInstance.resetFloor().subscribe();
+      await fixture.whenStable();
+      server = { id: 1, width: 8, height: 5 };
+      pending.next(server);
+      pending.complete();
+      await fixture.whenStable();
+      expect(el.querySelectorAll('app-cell')).toHaveLength(25);
+      expect(slider(el, 'Width').value).toBe('5');
+    });
+
+    it('a failed reset keeps the shown floor and errors the returned observable', async () => {
+      const { fixture, el } = await render(8, 6);
+      api.resetFloor.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 0 })));
+      let failed = false;
+      fixture.componentInstance.resetFloor().subscribe({ error: () => (failed = true) });
+      await fixture.whenStable();
+      expect(failed).toBe(true);
+      expect(el.querySelectorAll('app-cell')).toHaveLength(48);
+    });
+  });
+
   describe('robots', () => {
     it('empty cell click (edit off) → POST /robots with cellId, then renders R<id> with ^', async () => {
       const { fixture, el } = await render(3, 3);
@@ -407,6 +471,15 @@ describe('Grid', () => {
       const placed = robotAt(el, 2, 1)!;
       expect(placed.querySelector('.robot-id')!.textContent!.trim()).toBe('R40');
       expect(placed.querySelector('.robot-arrow')!.textContent!.trim()).toBe('^');
+    });
+
+    it('removeRobot(id) → that robot is no longer rendered; others stay', async () => {
+      robots = [robot(3, 1, 0, 0), robot(4, 9, 2, 2)];
+      const { fixture, el } = await render(3, 3);
+      fixture.componentInstance.removeRobot(3);
+      await fixture.whenStable();
+      expect(robotAt(el, 0, 0)).toBeNull();
+      expect(robotAt(el, 2, 2)).not.toBeNull();
     });
 
     it('Obstacle cell click → no POST', async () => {
@@ -488,6 +561,33 @@ describe('Grid', () => {
       await fixture.whenStable();
       expect(robotAt(el, 2, 1)!.querySelector('.robot')!.classList).toContain('border-green-300');
       expect(robotAt(el, 0, 0)!.querySelector('.robot')!.classList).toContain('border-blue-900');
+    });
+  });
+
+  describe('tick', () => {
+    it('a tick change reloads the robots and renders their new cells and directions', async () => {
+      robots = [robot(3, 1, 0, 0)];
+      const { fixture, el } = await render(3, 3);
+      robots = [robot(3, 4, 0, 1, Direction.East)];
+      fixture.componentRef.setInput('tick', 1);
+      await fixture.whenStable();
+      expect(api.getRobots).toHaveBeenCalledTimes(2);
+      expect(robotAt(el, 0, 0)).toBeNull();
+      expect(robotAt(el, 0, 1)!.querySelector('.robot-arrow')!.textContent!.trim()).toBe('>');
+    });
+
+    it('no tick change → no reload', async () => {
+      const { fixture } = await render(3, 3);
+      await fixture.whenStable();
+      expect(api.getRobots).toHaveBeenCalledTimes(1);
+    });
+
+    it('a failed reload shows the server error', async () => {
+      const { fixture, errors } = await render(3, 3);
+      api.getRobots.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 0 })));
+      fixture.componentRef.setInput('tick', 1);
+      await fixture.whenStable();
+      expect(errors).toEqual([SERVER_ERROR]);
     });
   });
 });

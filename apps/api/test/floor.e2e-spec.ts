@@ -63,4 +63,26 @@ describe('Floor persistence (e2e)', () => {
       await second.close();
     }
   });
+
+  it('POST /floors/:id/reset → 200, then GET /floors/:id is 5×5', async () => {
+    const app = await startApp();
+    try {
+      const server = app.getHttpServer();
+      const created = await request(server)
+        .post('/floors')
+        .send({ width: 8, height: 6 })
+        .expect(201);
+      const id = (created.body as { id: number }).id;
+      await request(server)
+        .post(`/floors/${id}/reset`)
+        .expect(200)
+        .expect({ id, width: 5, height: 5 });
+      await request(server)
+        .get(`/floors/${id}`)
+        .expect(200)
+        .expect({ id, width: 5, height: 5 });
+    } finally {
+      await app.close();
+    }
+  });
 });

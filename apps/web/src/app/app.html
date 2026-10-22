@@ -1,9 +1,9 @@
 <main class="layout mx-auto max-w-6xl p-4">
   <h1 class="sr-only">Fleet Floor Simulator</h1>
 
-  <div class="area-top flex justify-end gap-3">
+  <div class="area-top flex justify-center gap-3">
     <app-button label="Step" [disabled]="running()" (pressed)="onStep()" />
-    <app-button label="Play / Pause" (pressed)="onPlayPause()" />
+    <app-button [label]="running() ? 'Pause' : 'Play'" (pressed)="onPlayPause()" />
     <app-button
       [label]="editMode() ? 'Edit: On' : 'Edit: Off'"
       [highlighted]="editMode()"
@@ -30,12 +30,13 @@
       </svg>
     </app-button>
     <app-button label="Log" (pressed)="onOpenLog()" />
+    <app-button label="Reset All" (pressed)="onResetAll()" />
   </div>
 
   <app-grid
-    class="area-grid"
     [editMode]="editMode()"
     [selectedRobotId]="selectedRobotId()"
+    [tick]="currentTick()"
     (gridError)="addError($event)"
     (robotClicked)="onRobotClicked($event)"
   />
@@ -65,7 +66,7 @@
 
   <app-queue-panel class="area-queue" [robotId]="selectedRobotId()" [commands]="queue()" />
 
-  <div class="area-controls flex gap-3">
+  <div class="area-controls flex justify-center gap-3">
     <app-button
       label="Turn Left"
       [disabled]="selectedRobotId() === null"
@@ -77,6 +78,7 @@
       (pressed)="onTurnRight()"
     />
     <app-button label="Move" [disabled]="selectedRobotId() === null" (pressed)="onMove()" />
+    <app-button label="Delete" [disabled]="selectedRobotId() === null" (pressed)="onDelete()" />
   </div>
 </main>
 

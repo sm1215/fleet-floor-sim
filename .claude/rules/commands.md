@@ -1,8 +1,6 @@
 ---
 paths:
   - "apps/api/**"
-  - "apps/engine/**"
-  - "apps/queue/**"
 ---
 
 # Command rules
@@ -48,9 +46,9 @@ One `POST /commands/<name>` route per command. Params come in the body and are v
 
 ## Tick execution
 
-Each Engine `step()` (`apps/engine`, see `engine.md`) calls `doNext()` (`apps/queue`, see `queue.md`) and executes the commands it returns. Per tick:
+Each Engine `step()` (`apps/api/src/engine`, see `engine.md`) calls `doNext()` (`apps/api/src/queue`, see `queue.md`) and executes the commands it returns. Per tick:
 
-1. `doNext()` returns each robot's head command (FIFO), in `displayId` order, and deletes it from the queue.
+1. `doNext()` returns one promise per robot, in `displayId` order, each resolving to its head command (FIFO) or `null`; the head is deleted from the queue.
 2. `LEFT`: rotate counter-clockwise in place, `(d + 3) % 4`. `RIGHT`: rotate clockwise in place, `(d + 1) % 4`.
 3. All `MOVE`s are resolved together (below). Robots that are not moving this tick stay in their cells.
 4. Persist every new direction and cell to the DB.

@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   ParseIntPipe,
   Patch,
@@ -34,6 +35,12 @@ export class FloorController {
   @Patch(':id')
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateFloorDto) {
     return this.service.update(id, dto);
+  }
+
+  @Post(':id/reset')
+  @HttpCode(200)
+  reset(@Param('id', ParseIntPipe) id: number) {
+    return this.service.reset(id);
   }
 
   @Delete(':id')

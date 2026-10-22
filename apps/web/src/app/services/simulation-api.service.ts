@@ -56,6 +56,11 @@ export class SimulationApiService {
     return this.http.patch<Floor>(`${this.api}/floors/${id}`, size);
   }
 
+  /** Empties the floor and the log, rebuilds it 5 x 5 all Open, and pauses the engine at tick 0. */
+  resetFloor(id: number): Observable<Floor> {
+    return this.http.post<Floor>(`${this.api}/floors/${id}/reset`, {});
+  }
+
   /** All cells of one floor. */
   getCells(floorId: number): Observable<Cell[]> {
     return this.http
@@ -78,6 +83,11 @@ export class SimulationApiService {
     return this.http
       .post<ApiRobot>(`${this.api}/robots`, { cellId, direction: Direction.North })
       .pipe(map(toRobot));
+  }
+
+  /** Deletes a robot; the API deletes its queued commands with it. */
+  deleteRobot(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.api}/robots/${id}`);
   }
 
   /** One robot's queue in FIFO order. */

@@ -1,14 +1,24 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
   NotImplementedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Cell, Robot } from '../../database/entities/index.js';
+import { Cell, QueuedCommand, Robot } from '../../database/entities/index.js';
 import { CreateRobotDto } from './dto/create-robot.dto.js';
 import { UpdateRobotDto } from './dto/update-robot.dto.js';
+
+/** Held by a new robot only until its id is copied into displayId. */
+const DISPLAY_ID_PLACEHOLDER = -1;
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    (error as { code?: string } | null)?.code === 'SQLITE_CONSTRAINT_UNIQUE'
+  );
+}
 
 @Injectable()
 export class RobotService {
@@ -18,7 +28,11 @@ export class RobotService {
   ) {}
 
   /** Places a robot on an existing Open cell with no robot on it. */
-  async create({ cellId, ...fields }: CreateRobotDto): Promise<Robot> {
+  async create({
+    cellId,
+    displayId,
+    ...fields
+  }: CreateRobotDto): Promise<Robot> {
     const cell = await this.cellRepo.findOne({ where: { id: cellId } });
     if (!cell) throw new BadRequestException(`Cell ${cellId} not found`);
     if (cell.obstacle) {
@@ -27,9 +41,32 @@ export class RobotService {
     if (await this.repo.exists({ where: { cell: { id: cellId } } })) {
       throw new BadRequestException(`Cell ${cellId} already has a robot`);
     }
-    return this.repo.save(
-      this.repo.create({ ...fields, cell: { id: cellId } }),
-    );
+    try {
+      return await this.repo.manager.transaction(async (manager) => {
+        const repo = manager.getRepository(Robot);
+        // displayId is NOT NULL and unique, but the id only exists after the
+        // insert: save a placeholder, then copy the new id into it.
+        const saved = await repo.save(
+          repo.create({
+            ...fields,
+            displayId: displayId ?? DISPLAY_ID_PLACEHOLDER,
+            cell: { id: cellId },
+          }),
+        );
+        if (displayId === undefined) {
+          await repo.update(saved.id, { displayId: saved.id });
+          saved.displayId = saved.id;
+        }
+        return saved;
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ConflictException(
+          `Robot displayId ${displayId ?? 'for the new id'} already exists`,
+        );
+      }
+      throw error;
+    }
   }
 
   findAll(): Promise<Robot[]> {
@@ -58,24 +95,18 @@ export class RobotService {
     return this.findOne(id);
   }
 
+  /** Deletes the robot's queued commands with it: QueuedCommand has an FK to Robot. */
   async remove(id: number): Promise<void> {
-    await this.repo.remove(await this.findOne(id));
+    const robot = await this.findOne(id);
+    await this.repo.manager.transaction(async (manager) => {
+      await manager.getRepository(QueuedCommand).delete({ robot: { id } });
+      await manager.getRepository(Robot).remove(robot);
+    });
   }
 
-  // Engine placeholders, not exposed over HTTP.
+  // REPORT placeholder, not exposed over HTTP. LEFT / RIGHT / MOVE are
+  // applied by EngineCommandsService.
   /* eslint-disable @typescript-eslint/require-await */
-  async turnLeft(id: number): Promise<Robot> {
-    throw new NotImplementedException(`turnLeft(${id})`);
-  }
-
-  async turnRight(id: number): Promise<Robot> {
-    throw new NotImplementedException(`turnRight(${id})`);
-  }
-
-  async move(id: number): Promise<Robot> {
-    throw new NotImplementedException(`move(${id})`);
-  }
-
   async reportState(id: number): Promise<Robot> {
     throw new NotImplementedException(`reportState(${id})`);
   }
