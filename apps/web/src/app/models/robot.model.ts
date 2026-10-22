@@ -5,7 +5,7 @@ export interface Robot {
   direction: Direction;
   cellId: number;
   /** Derived from the robot's cell. */
-  x: number;
+  readonly x: number;
   /** Derived from the robot's cell. */
-  y: number;
+  readonly y: number;
 }

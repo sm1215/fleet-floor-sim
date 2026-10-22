@@ -29,18 +29,42 @@
   </label>
 </div>
 @if (floor(); as floor) {
-  <div
-    class="floor grid w-fit"
-    [style.grid-template-columns]="'repeat(' + floor.width + ', ' + cellSize() + 'px)'"
-    [style.grid-template-rows]="'repeat(' + floor.height + ', ' + cellSize() + 'px)'"
-  >
-    @for (cell of orderedCells(); track cell.id) {
-      <app-cell
-        [cell]="cell"
-        [robot]="robotsByCell().get(cell.id)"
-        [attr.data-x]="cell.xPosition"
-        [attr.data-y]="cell.yPosition"
-      />
-    }
+  <div class="grid w-fit grid-cols-[auto_auto] text-xs">
+    <div
+      class="row-labels grid pr-1"
+      [style.grid-template-rows]="'repeat(' + floor.height + ', ' + cellSize() + 'px)'"
+    >
+      @for (y of rowLabels(); track y) {
+        <span class="flex items-center justify-end">{{ y }}</span>
+      }
+    </div>
+    <div
+      class="floor grid w-fit"
+      [style.grid-template-columns]="'repeat(' + floor.width + ', ' + cellSize() + 'px)'"
+      [style.grid-template-rows]="'repeat(' + floor.height + ', ' + cellSize() + 'px)'"
+    >
+      @for (cell of orderedCells(); track cell.id) {
+        @let robot = robotsByCell().get(cell.id);
+        <app-cell
+          [cell]="cell"
+          [robot]="robot"
+          [editMode]="editMode()"
+          [selected]="robot !== undefined && robot.id === selectedRobotId()"
+          (clicked)="onCellClick(cell)"
+          (robotClicked)="robotClicked.emit(robot!.id)"
+          [attr.data-x]="cell.xPosition"
+          [attr.data-y]="cell.yPosition"
+        />
+      }
+    </div>
+    <div></div>
+    <div
+      class="column-labels grid pt-1"
+      [style.grid-template-columns]="'repeat(' + floor.width + ', ' + cellSize() + 'px)'"
+    >
+      @for (x of columnLabels(); track x) {
+        <span class="text-center">{{ x }}</span>
+      }
+    </div>
   </div>
 }

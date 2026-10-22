@@ -18,12 +18,12 @@ describe('QueuePanel', () => {
 
   it('renders commands in FIFO order', async () => {
     const commands: QueuedCommand[] = [
-      { id: 1, command: 'MOVE', params: '', robotId: 3 },
-      { id: 2, command: 'TURN_LEFT', params: '', robotId: 3 },
-      { id: 3, command: 'TURN_RIGHT', params: '', robotId: 3 },
+      { id: 1, command: 'MOVE', params: null, robotId: 3 },
+      { id: 2, command: 'LEFT', params: null, robotId: 3 },
+      { id: 3, command: 'RIGHT', params: null, robotId: 3 },
     ];
     const el = await render(3, commands);
     const items = Array.from(el.querySelectorAll('li')).map((li) => li.textContent?.trim());
-    expect(items).toEqual(['MOVE', 'TURN_LEFT', 'TURN_RIGHT']);
+    expect(items).toEqual(['MOVE', 'LEFT', 'RIGHT']);
   });
 });

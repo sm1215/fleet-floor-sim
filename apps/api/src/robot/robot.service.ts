@@ -1,11 +1,12 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
   NotImplementedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Robot } from '../../database/entities/index.js';
+import { Cell, Robot } from '../../database/entities/index.js';
 import { CreateRobotDto } from './dto/create-robot.dto.js';
 import { UpdateRobotDto } from './dto/update-robot.dto.js';
 
@@ -13,9 +14,19 @@ import { UpdateRobotDto } from './dto/update-robot.dto.js';
 export class RobotService {
   constructor(
     @InjectRepository(Robot) private readonly repo: Repository<Robot>,
+    @InjectRepository(Cell) private readonly cellRepo: Repository<Cell>,
   ) {}
 
-  create({ cellId, ...fields }: CreateRobotDto): Promise<Robot> {
+  /** Places a robot on an existing Open cell with no robot on it. */
+  async create({ cellId, ...fields }: CreateRobotDto): Promise<Robot> {
+    const cell = await this.cellRepo.findOne({ where: { id: cellId } });
+    if (!cell) throw new BadRequestException(`Cell ${cellId} not found`);
+    if (cell.obstacle) {
+      throw new BadRequestException(`Cell ${cellId} is an Obstacle`);
+    }
+    if (await this.repo.exists({ where: { cell: { id: cellId } } })) {
+      throw new BadRequestException(`Cell ${cellId} already has a robot`);
+    }
     return this.repo.save(
       this.repo.create({ ...fields, cell: { id: cellId } }),
     );

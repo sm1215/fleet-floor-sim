@@ -11,5 +11,5 @@ export interface Position {
   y: number;
 }
 
-export const COMMANDS = ['MOVE', 'TURN_LEFT', 'TURN_RIGHT'] as const;
+export const COMMANDS = ['MOVE', 'LEFT', 'RIGHT'] as const;
 export type Command = (typeof COMMANDS)[number];

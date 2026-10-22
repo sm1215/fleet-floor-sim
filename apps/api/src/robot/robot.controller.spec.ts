@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { QueuedCommandService } from '../queued-command/queued-command.service.js';
 import { RobotController } from './robot.controller.js';
 import { RobotService } from './robot.service.js';
 
@@ -13,12 +14,19 @@ describe('RobotController', () => {
     update: vi.fn().mockResolvedValue({ ...row, ...updateDto }),
     remove: vi.fn().mockResolvedValue(undefined),
   };
+  const commands = [{ id: 4, command: 'MOVE', params: null }];
+  const queuedCommandService = {
+    findByRobot: vi.fn().mockResolvedValue(commands),
+  };
   let controller: RobotController;
 
   beforeEach(async () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [RobotController],
-      providers: [{ provide: RobotService, useValue: service }],
+      providers: [
+        { provide: RobotService, useValue: service },
+        { provide: QueuedCommandService, useValue: queuedCommandService },
+      ],
     }).compile();
     controller = moduleRef.get(RobotController);
   });
@@ -30,6 +38,11 @@ describe('RobotController', () => {
 
   it('findAll', async () => {
     await expect(controller.findAll()).resolves.toEqual([row]);
+  });
+
+  it('findQueuedCommands', async () => {
+    await expect(controller.findQueuedCommands(1)).resolves.toEqual(commands);
+    expect(queuedCommandService.findByRobot).toHaveBeenCalledWith(1);
   });
 
   it('findOne', async () => {

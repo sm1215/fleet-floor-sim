@@ -1,6 +1,10 @@
 <div
-  class="flex h-full w-full flex-col items-center justify-center border-2 border-[#f08c00] text-[#f08c00]"
+  class="robot relative box-border flex h-full w-full items-center justify-center border-2 bg-blue-200 text-blue-900"
+  [class.border-green-300]="selected()"
+  [class.border-blue-900]="!selected()"
 >
-  <span class="robot-arrow block leading-none" [style.transform]="arrowTransform()">&#8593;</span>
-  <span class="robot-id text-[0.6rem] leading-none">R{{ robot().id }}</span>
+  <span class="robot-arrow leading-none">{{ arrow() }}</span>
+  <span class="robot-id absolute inset-x-0 bottom-0 text-center text-[0.6rem] leading-none">
+    R{{ robot().id }}
+  </span>
 </div>

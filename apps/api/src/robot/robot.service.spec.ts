@@ -1,7 +1,11 @@
-import { NotFoundException, NotImplementedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  NotFoundException,
+  NotImplementedException,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Robot } from '../../database/entities/index.js';
+import { Cell, Robot } from '../../database/entities/index.js';
 import { RobotService } from './robot.service.js';
 
 describe('RobotService', () => {
@@ -9,6 +13,7 @@ describe('RobotService', () => {
   const { cellId, ...fields } = createDto;
   const row = { id: 1, ...fields, cell: { id: cellId } };
   let repo: Record<string, ReturnType<typeof vi.fn>>;
+  let cellRepo: Record<string, ReturnType<typeof vi.fn>>;
   let service: RobotService;
 
   beforeEach(async () => {
@@ -18,11 +23,16 @@ describe('RobotService', () => {
       find: vi.fn().mockResolvedValue([row]),
       findOne: vi.fn().mockResolvedValue(row),
       remove: vi.fn().mockResolvedValue(row),
+      exists: vi.fn().mockResolvedValue(false),
+    };
+    cellRepo = {
+      findOne: vi.fn().mockResolvedValue({ id: cellId, obstacle: false }),
     };
     const moduleRef = await Test.createTestingModule({
       providers: [
         RobotService,
         { provide: getRepositoryToken(Robot), useValue: repo },
+        { provide: getRepositoryToken(Cell), useValue: cellRepo },
       ],
     }).compile();
     service = moduleRef.get(RobotService);
@@ -31,6 +41,33 @@ describe('RobotService', () => {
   it('maps cellId to the cell relation on create', async () => {
     await expect(service.create(createDto)).resolves.toEqual(row);
     expect(repo.save).toHaveBeenCalledWith({ ...fields, cell: { id: cellId } });
+  });
+
+  it('rejects create on an Obstacle cell and creates nothing', async () => {
+    cellRepo.findOne.mockResolvedValue({ id: cellId, obstacle: true });
+    await expect(service.create(createDto)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects create on an occupied cell and creates nothing', async () => {
+    repo.exists.mockResolvedValue(true);
+    await expect(service.create(createDto)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(repo.exists).toHaveBeenCalledWith({
+      where: { cell: { id: cellId } },
+    });
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects create on a missing cell (outside the grid)', async () => {
+    cellRepo.findOne.mockResolvedValue(null);
+    await expect(service.create(createDto)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(repo.save).not.toHaveBeenCalled();
   });
 
   it('finds all with the cell relation', async () => {
@@ -74,6 +111,7 @@ describe('RobotService engine placeholders', () => {
         providers: [
           RobotService,
           { provide: getRepositoryToken(Robot), useValue: {} },
+          { provide: getRepositoryToken(Cell), useValue: {} },
         ],
       }).compile();
       const service = moduleRef.get(RobotService);

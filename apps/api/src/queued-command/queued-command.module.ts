@@ -8,5 +8,6 @@ import { QueuedCommandService } from './queued-command.service.js';
   imports: [TypeOrmModule.forFeature([QueuedCommand])],
   controllers: [QueuedCommandController],
   providers: [QueuedCommandService],
+  exports: [QueuedCommandService],
 })
 export class QueuedCommandModule {}

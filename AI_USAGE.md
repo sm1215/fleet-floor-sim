@@ -49,3 +49,17 @@ Planned floor-grid implementation (.claude/plans/floor-grid-implementation-plan.
 Executed floor-grid plan inline (4 tasks, no commit). API: POST /floors creates Open cells; PATCH resizes in one transaction with planResize (Manhattan, y then x, Id order) or 409. SQLite-backed service spec, restart e2e. Web: service floor/cell calls; Grid loads/creates floor, sliders PATCH on change, reverts on error; App stacked error list. Ruling: revert tests render between input and change. Manual browser check not run.
 
 Ran an Opus subagent code review of the floor-grid work, then fixed per user: planResize now uses newly created cells as targets (mixed resize bug); Grid uses one switchMap pipeline so size and cells show together and stale responses are dropped; load and non-409 failures show "Server can't be reached"; added tests incl. two releases and 1x1 Obstacle. Output renamed gridError. Updated floor-grid.md and plan. Explained duplicate DataSource warning. Not committed.
+
+Executing robot-rules impl plan (.claude/plans/robot-rules-impl-plan.md) inline on branch robot-rules. Edit mode was missing; user chose to implement edit-mode.md in the same run and keep the Grid output name gridError. Added rule: failed POST /robots shows "Robot failed to place.". params nullable via migration; commands LEFT/RIGHT/MOVE. No commit.
+
+Finished robot-rules + edit-mode run. API: placement 400s, cell obstacle guard (400), GET /robots/:id/queued-commands, nullable params migration. Web: robot styles/arrows/selection, edit toggle with lock icon, cell PATCH, placement, command queue, errors. Rulings: Grid reloads robots after resize; queue load failure shows server error; cells focusable for lint. Tests: API 92, e2e 11, web 120; lint/build OK. Manual check not run. Not committed.
+
+User asked robots not to move on height change. API already keeps robots on surviving cells; asked user whether they meant coordinates or screen position. User: keep robot behavior, add row/column number labels from the origin so rows visibly add at the top. Updated floor-grid.md: Axis labels section (y left, x below, from 0), explicit "robots keep surviving cell" rule, plus client and API tests. Rules only, no code.
+
+Implemented grid axis labels per floor-grid.md: rowLabels (height-1..0) left of the floor, columnLabels (0..width-1) below, sized to cellSize and driven by the saved floor so labels change with the cells. Added 2 grid.spec tests (label order, height increase adds labels at top) and the missing API test that robots on surviving cells keep their cell (grow and shrink). Web 122, API 94 pass; lint and Prettier OK. Not committed.
+
+User asked for the inline error X to look more like a button, with a pointer cursor. Asked which style; user picked a small bordered box. Updated frontend.md Errors section: `rounded border border-red-600 px-1.5 leading-none hover:bg-red-100 cursor-pointer`. Rules only, no code.
+
+Applied the error X button style from frontend.md to app.html (bordered red box, hover:bg-red-100, cursor-pointer). Prettier OK; web tests 122 pass. Not committed.
+
+User asked for the error X to match the other buttons, centered. Asked size (app-button is ~40px, list is 50px); user picked compact. X now uses app-button colors/border/hover in an h-6 w-6 flex square, centered both ways. Updated frontend.md + app.html. Web tests 122 pass. Not committed.

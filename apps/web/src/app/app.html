@@ -4,18 +4,53 @@
   <div class="area-top flex justify-end gap-3">
     <app-button label="Step" (pressed)="onStep()" />
     <app-button label="Play / Pause" (pressed)="onPlayPause()" />
-    <app-button label="Edit" (pressed)="onToggleEdit()" />
+    <app-button
+      [label]="editMode() ? 'Edit: On' : 'Edit: Off'"
+      [highlighted]="editMode()"
+      (pressed)="onToggleEdit()"
+    >
+      <svg
+        [attr.data-icon]="editMode() ? 'unlocked' : 'locked'"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <rect x="5" y="11" width="14" height="10" rx="2" />
+        @if (editMode()) {
+          <path d="M8 11V7a4 4 0 0 1 7.75-1.4" />
+        } @else {
+          <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+        }
+      </svg>
+    </app-button>
     <app-button label="Log" (pressed)="onOpenLog()" />
   </div>
 
-  <app-grid class="area-grid" [robots]="robots()" (gridError)="addError($event)" />
+  <app-grid
+    class="area-grid"
+    [editMode]="editMode()"
+    [selectedRobotId]="selectedRobotId()"
+    (gridError)="addError($event)"
+    (robotClicked)="onRobotClicked($event)"
+  />
 
   <div class="area-errors">
     <ul class="max-h-[50px] overflow-y-auto text-red-600">
       @for (error of errors(); track error.id) {
         <li class="flex items-center gap-2">
           <span>{{ error.text }}</span>
-          <button type="button" aria-label="Dismiss error" (click)="dismissError(error.id)">
+          <button
+            type="button"
+            class="flex h-6 w-6 cursor-pointer items-center justify-center rounded border-2 bg-[#a5d8ff] leading-none text-[#1971c2] hover:brightness-95"
+            aria-label="Dismiss error"
+            (click)="dismissError(error.id)"
+          >
             ×
           </button>
         </li>
@@ -31,9 +66,17 @@
   <app-queue-panel class="area-queue" [robotId]="selectedRobotId()" [commands]="queue()" />
 
   <div class="area-controls flex gap-3">
-    <app-button label="Turn Left" (pressed)="onTurnLeft()" />
-    <app-button label="Turn Right" (pressed)="onTurnRight()" />
-    <app-button label="Move" (pressed)="onMove()" />
+    <app-button
+      label="Turn Left"
+      [disabled]="selectedRobotId() === null"
+      (pressed)="onTurnLeft()"
+    />
+    <app-button
+      label="Turn Right"
+      [disabled]="selectedRobotId() === null"
+      (pressed)="onTurnRight()"
+    />
+    <app-button label="Move" [disabled]="selectedRobotId() === null" (pressed)="onMove()" />
   </div>
 </main>
 

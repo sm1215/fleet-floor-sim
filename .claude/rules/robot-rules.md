@@ -34,6 +34,7 @@ paths:
 - Clicking an Obstacle or occupied cell is ignored: no POST.
 - Robots can't be placed outside the grid.
 - The API returns 400 for an Obstacle or occupied cell and creates nothing.
+- A failed `POST /robots` renders nothing and shows `Robot failed to place.` (see Errors in `frontend.md`).
 
 ## Persistence
 
@@ -101,6 +102,7 @@ Client (`grid.spec.ts`):
 - Empty cell click (edit off) → `POST /robots` with cellId + North, then renders `R<id>` with `^`.
 - Obstacle cell click → no POST.
 - Occupied cell click → no POST.
+- `POST /robots` fails → no robot renders and `Robot failed to place.` is emitted.
 - Init `GET /robots` → robots render at their cell x/y with their direction.
 - Robot click in edit mode → selects it; no `PATCH /cells`.
 - Robot click in non-edit mode → selects it; no `POST /robots`.

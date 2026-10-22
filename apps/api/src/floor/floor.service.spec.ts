@@ -123,6 +123,25 @@ describe('FloorService', () => {
     ]);
   });
 
+  it.each([
+    ['grow', { width: 5, height: 5 }],
+    ['shrink', { width: 2, height: 2 }],
+  ])(
+    '%s: robots on cells still inside the bounds keep their cell',
+    async (_, size) => {
+      const floor = await service.create({ width: 3, height: 3 });
+      const robot = await placeRobot(floor.id, 1, 1);
+      const before = await cellAt(floor.id, 1, 1);
+      await service.update(floor.id, size);
+      const after = await robots.findOneOrFail({
+        where: { id: robot.id },
+        relations: { cell: true },
+      });
+      expect(after.cell.id).toBe(before.id);
+      expect(await robotPos(robot.id)).toEqual([1, 1]);
+    },
+  );
+
   it('displaced robot moves to nearest free Open cell', async () => {
     const floor = await service.create({ width: 5, height: 5 });
     const robot = await placeRobot(floor.id, 4, 2);

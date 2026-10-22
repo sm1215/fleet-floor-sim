@@ -16,8 +16,8 @@ export class QueuedCommand {
   @Column({ type: 'varchar' })
   command: string;
 
-  @Column({ type: 'varchar' })
-  params: string;
+  @Column({ type: 'varchar', nullable: true })
+  params: string | null;
 
   @ManyToOne(() => Robot)
   @JoinColumn({ name: 'robot_id' })

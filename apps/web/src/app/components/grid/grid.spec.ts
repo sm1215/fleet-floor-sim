@@ -2,9 +2,11 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { Observable, of, Subject, throwError } from 'rxjs';
 import { Cell } from '../../models/cell.model';
+import { Direction } from '../../models/direction';
 import { Floor, FloorSize } from '../../models/floor.model';
+import { Robot } from '../../models/robot.model';
 import { SimulationApiService } from '../../services/simulation-api.service';
-import { Grid, RESIZE_ERROR, SERVER_ERROR } from './grid';
+import { Grid, PLACE_ERROR, RESIZE_ERROR, SERVER_ERROR } from './grid';
 
 function makeCells(floor: Floor): Cell[] {
   const cells: Cell[] = [];
@@ -22,6 +24,10 @@ function makeCells(floor: Floor): Cell[] {
   return cells;
 }
 
+function robot(id: number, cellId: number, x: number, y: number, direction = Direction.North) {
+  return { id, direction, cellId, x, y };
+}
+
 describe('Grid', () => {
   // The floor as the mocked API currently stores it.
   let server: Floor | null;
@@ -30,7 +36,14 @@ describe('Grid', () => {
     createFloor: ReturnType<typeof vi.fn<(size: FloorSize) => Observable<Floor>>>;
     updateFloor: ReturnType<typeof vi.fn<(id: number, size: FloorSize) => Observable<Floor>>>;
     getCells: ReturnType<typeof vi.fn<(floorId: number) => Observable<Cell[]>>>;
+    updateCell: ReturnType<
+      typeof vi.fn<(id: number, change: Pick<Cell, 'obstacle'>) => Observable<Cell>>
+    >;
+    getRobots: ReturnType<typeof vi.fn<() => Observable<Robot[]>>>;
+    createRobot: ReturnType<typeof vi.fn<(cellId: number) => Observable<Robot>>>;
   };
+  // The robots as the mocked API currently stores them.
+  let robots: Robot[];
 
   beforeEach(() => {
     server = null;
@@ -39,15 +52,25 @@ describe('Grid', () => {
       createFloor: vi.fn((size: FloorSize) => of((server = { id: 1, ...size }))),
       updateFloor: vi.fn((id: number, size: FloorSize) => of((server = { id, ...size }))),
       getCells: vi.fn(() => of(server ? makeCells(server) : [])),
+      updateCell: vi.fn((id: number, change: Pick<Cell, 'obstacle'>) =>
+        of({ ...makeCells(server!).find((c) => c.id === id)!, ...change }),
+      ),
+      getRobots: vi.fn(() => of(robots)),
+      createRobot: vi.fn((cellId: number) => {
+        const cell = makeCells(server!).find((c) => c.id === cellId)!;
+        return of(robot(40, cellId, cell.xPosition, cell.yPosition));
+      }),
     };
+    robots = [];
     TestBed.configureTestingModule({
       providers: [{ provide: SimulationApiService, useValue: api }],
     });
   });
 
-  async function render(width?: number, height?: number) {
+  async function render(width?: number, height?: number, editMode?: boolean) {
     if (width !== undefined && height !== undefined) server = { id: 1, width, height };
     const fixture = TestBed.createComponent(Grid);
+    if (editMode !== undefined) fixture.componentRef.setInput('editMode', editMode);
     const errors: string[] = [];
     fixture.componentInstance.gridError.subscribe((text) => errors.push(text));
     await fixture.whenStable();
@@ -102,6 +125,26 @@ describe('Grid', () => {
     const bottomLeft = cells[cells.length - 5];
     expect(bottomLeft.getAttribute('data-x')).toBe('0');
     expect(bottomLeft.getAttribute('data-y')).toBe('0');
+  });
+
+  function labels(el: HTMLElement, selector: '.row-labels' | '.column-labels'): string[] {
+    return Array.from(el.querySelectorAll(`${selector} span`)).map((s) => s.textContent!.trim());
+  }
+
+  it('row labels read height - 1 down to 0; column labels read 0 to width - 1', async () => {
+    const { el } = await render(5, 4);
+    expect(labels(el, '.row-labels')).toEqual(['3', '2', '1', '0']);
+    expect(labels(el, '.column-labels')).toEqual(['0', '1', '2', '3', '4']);
+  });
+
+  it('height increase adds new row labels at the top; existing labels keep their numbers', async () => {
+    const { fixture, el } = await render(3, 2);
+    expect(labels(el, '.row-labels')).toEqual(['1', '0']);
+    drag(el, 'Height', 4);
+    release(el, 'Height');
+    await fixture.whenStable();
+    expect(labels(el, '.row-labels')).toEqual(['3', '2', '1', '0']);
+    expect(labels(el, '.column-labels')).toEqual(['0', '1', '2']);
   });
 
   it('renders a 20 x 20 grid', async () => {
@@ -290,5 +333,161 @@ describe('Grid', () => {
     expect(slider(el, 'Width').value).toBe('8');
     expect(slider(el, 'Height').value).toBe('4');
     expect(el.querySelectorAll('app-cell').length).toBe(32);
+  });
+
+  /** The cell element at x, y. In makeCells, Id = y * width + x + 1. */
+  function cellAt(el: HTMLElement, x: number, y: number): HTMLElement {
+    return el.querySelector<HTMLElement>(`app-cell[data-x="${x}"][data-y="${y}"] .cell`)!;
+  }
+
+  function robotAt(el: HTMLElement, x: number, y: number): HTMLElement | null {
+    return el.querySelector<HTMLElement>(`app-cell[data-x="${x}"][data-y="${y}"] app-robot`);
+  }
+
+  describe('edit mode', () => {
+    it('cell click → PATCH /cells/:id with the flipped obstacle; the cell updates after success', async () => {
+      const { fixture, el } = await render(3, 3, true);
+      cellAt(el, 1, 0).click();
+      await fixture.whenStable();
+      expect(api.updateCell).toHaveBeenCalledExactlyOnceWith(2, { obstacle: true });
+      expect(cellAt(el, 1, 0).classList).toContain('obstacle');
+
+      api.updateCell.mockClear();
+      cellAt(el, 1, 0).click();
+      await fixture.whenStable();
+      expect(api.updateCell).toHaveBeenCalledExactlyOnceWith(2, { obstacle: false });
+      expect(cellAt(el, 1, 0).classList).not.toContain('obstacle');
+    });
+
+    it('the cell does not change before the PATCH succeeds', async () => {
+      const { fixture, el } = await render(3, 3, true);
+      api.updateCell.mockReturnValueOnce(new Subject<Cell>());
+      cellAt(el, 1, 0).click();
+      await fixture.whenStable();
+      expect(cellAt(el, 1, 0).classList).not.toContain('obstacle');
+    });
+
+    it('PATCH fails → the cell is unchanged', async () => {
+      const { fixture, el } = await render(3, 3, true);
+      api.updateCell.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 500 })));
+      cellAt(el, 1, 0).click();
+      await fixture.whenStable();
+      expect(cellAt(el, 1, 0).classList).not.toContain('obstacle');
+    });
+
+    it('edit mode off, cell click → no obstacle PATCH', async () => {
+      const { fixture, el } = await render(3, 3, false);
+      cellAt(el, 1, 0).click();
+      await fixture.whenStable();
+      expect(api.updateCell).not.toHaveBeenCalled();
+    });
+
+    it('click a cell with a robot → no PATCH; the cell is unchanged', async () => {
+      robots = [robot(9, 2, 1, 0)];
+      const { fixture, el } = await render(3, 3, true);
+      cellAt(el, 1, 0).click();
+      await fixture.whenStable();
+      expect(api.updateCell).not.toHaveBeenCalled();
+      expect(api.createRobot).not.toHaveBeenCalled();
+      expect(cellAt(el, 1, 0).classList).not.toContain('obstacle');
+    });
+
+    it('passes edit mode on to the cells', async () => {
+      const { el } = await render(3, 3, true);
+      expect(cellAt(el, 0, 0).classList).toContain('border-[#f08c00]');
+    });
+  });
+
+  describe('robots', () => {
+    it('empty cell click (edit off) → POST /robots with cellId, then renders R<id> with ^', async () => {
+      const { fixture, el } = await render(3, 3);
+      cellAt(el, 2, 1).click();
+      await fixture.whenStable();
+      expect(api.createRobot).toHaveBeenCalledExactlyOnceWith(6);
+      const placed = robotAt(el, 2, 1)!;
+      expect(placed.querySelector('.robot-id')!.textContent!.trim()).toBe('R40');
+      expect(placed.querySelector('.robot-arrow')!.textContent!.trim()).toBe('^');
+    });
+
+    it('Obstacle cell click → no POST', async () => {
+      const { fixture, el } = await render(3, 3, true);
+      cellAt(el, 2, 1).click();
+      await fixture.whenStable();
+      fixture.componentRef.setInput('editMode', false);
+      await fixture.whenStable();
+      cellAt(el, 2, 1).click();
+      await fixture.whenStable();
+      expect(api.createRobot).not.toHaveBeenCalled();
+    });
+
+    it('occupied cell click → no POST', async () => {
+      robots = [robot(9, 6, 2, 1)];
+      const { fixture, el } = await render(3, 3);
+      cellAt(el, 2, 1).click();
+      await fixture.whenStable();
+      expect(api.createRobot).not.toHaveBeenCalled();
+    });
+
+    it('POST /robots fails → no robot renders and the placement error is emitted', async () => {
+      const { fixture, el, errors } = await render(3, 3);
+      api.createRobot.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 400 })));
+      cellAt(el, 2, 1).click();
+      await fixture.whenStable();
+      expect(el.querySelector('app-robot')).toBeNull();
+      expect(PLACE_ERROR).toBe('Robot failed to place.');
+      expect(errors).toEqual([PLACE_ERROR]);
+    });
+
+    it('init GET /robots → robots render at their cell x/y with their direction', async () => {
+      robots = [robot(3, 1, 0, 0, Direction.East), robot(4, 9, 2, 2, Direction.West)];
+      const { el } = await render(3, 3);
+      expect(api.getRobots).toHaveBeenCalledTimes(1);
+      expect(robotAt(el, 0, 0)!.querySelector('.robot-id')!.textContent!.trim()).toBe('R3');
+      expect(robotAt(el, 0, 0)!.querySelector('.robot-arrow')!.textContent!.trim()).toBe('>');
+      expect(robotAt(el, 2, 2)!.querySelector('.robot-id')!.textContent!.trim()).toBe('R4');
+      expect(robotAt(el, 2, 2)!.querySelector('.robot-arrow')!.textContent!.trim()).toBe('<');
+      expect(el.querySelectorAll('app-robot').length).toBe(2);
+    });
+
+    it('GET /robots fails → emits SERVER_ERROR', async () => {
+      api.getRobots.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 0 })));
+      const { errors } = await render(3, 3);
+      expect(errors).toEqual([SERVER_ERROR]);
+    });
+
+    it('a successful resize reloads robots, so robots the API moved show on their new cells', async () => {
+      robots = [robot(3, 9, 2, 2)];
+      const { fixture, el } = await render(3, 3);
+      robots = [robot(3, 4, 1, 1)];
+      drag(el, 'Width', 2);
+      release(el, 'Width');
+      await fixture.whenStable();
+      expect(robotAt(el, 1, 1)!.querySelector('.robot-id')!.textContent!.trim()).toBe('R3');
+      expect(el.querySelectorAll('app-robot').length).toBe(1);
+    });
+
+    it.each([true, false])(
+      'robot click with edit mode %s → emits robotClicked; no PATCH /cells, no POST /robots',
+      async (editMode) => {
+        robots = [robot(9, 6, 2, 1)];
+        const { fixture, el } = await render(3, 3, editMode);
+        const clicked: number[] = [];
+        fixture.componentInstance.robotClicked.subscribe((id) => clicked.push(id));
+        robotAt(el, 2, 1)!.click();
+        await fixture.whenStable();
+        expect(clicked).toEqual([9]);
+        expect(api.updateCell).not.toHaveBeenCalled();
+        expect(api.createRobot).not.toHaveBeenCalled();
+      },
+    );
+
+    it('the robot with selectedRobotId gets the selected border', async () => {
+      robots = [robot(9, 6, 2, 1), robot(10, 1, 0, 0)];
+      const { fixture, el } = await render(3, 3);
+      fixture.componentRef.setInput('selectedRobotId', 9);
+      await fixture.whenStable();
+      expect(robotAt(el, 2, 1)!.querySelector('.robot')!.classList).toContain('border-green-300');
+      expect(robotAt(el, 0, 0)!.querySelector('.robot')!.classList).toContain('border-blue-900');
+    });
   });
 });

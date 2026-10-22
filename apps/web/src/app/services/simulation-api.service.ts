@@ -3,11 +3,38 @@ import { inject, Injectable } from '@angular/core';
 import { map, Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { Cell } from '../models/cell.model';
+import { Direction } from '../models/direction';
 import { Floor, FloorSize } from '../models/floor.model';
+import { CommandName, QueuedCommand } from '../models/queued-command.model';
+import { Robot } from '../models/robot.model';
 
 /** Cell as returned by the API: the floor relation instead of floorId. */
 interface ApiCell extends Omit<Cell, 'floorId'> {
   floor: Floor;
+}
+
+/** Robot as returned by the API: the cell relation instead of cellId, x and y. */
+interface ApiRobot {
+  id: number;
+  direction: Direction;
+  cell: Omit<Cell, 'floorId'>;
+}
+
+/** Queued command as returned by the API: the robot relation instead of robotId. */
+interface ApiQueuedCommand extends Omit<QueuedCommand, 'robotId'> {
+  robot: { id: number };
+}
+
+function toCell({ floor, ...cell }: ApiCell): Cell {
+  return { ...cell, floorId: floor.id };
+}
+
+function toRobot({ id, direction, cell }: ApiRobot): Robot {
+  return { id, direction, cellId: cell.id, x: cell.xPosition, y: cell.yPosition };
+}
+
+function toQueuedCommand({ robot, ...command }: ApiQueuedCommand): QueuedCommand {
+  return { ...command, robotId: robot.id };
 }
 
 /** HTTP client for the simulation API. */
@@ -32,12 +59,36 @@ export class SimulationApiService {
   getCells(floorId: number): Observable<Cell[]> {
     return this.http
       .get<ApiCell[]>(`${this.api}/cells`)
-      .pipe(
-        map((cells) =>
-          cells
-            .filter((cell) => cell.floor.id === floorId)
-            .map(({ floor, ...cell }) => ({ ...cell, floorId: floor.id })),
-        ),
-      );
+      .pipe(map((cells) => cells.filter((cell) => cell.floor.id === floorId).map(toCell)));
+  }
+
+  updateCell(id: number, change: Pick<Cell, 'obstacle'>): Observable<Cell> {
+    return this.http.patch<ApiCell>(`${this.api}/cells/${id}`, change).pipe(map(toCell));
+  }
+
+  getRobots(): Observable<Robot[]> {
+    return this.http
+      .get<ApiRobot[]>(`${this.api}/robots`)
+      .pipe(map((robots) => robots.map(toRobot)));
+  }
+
+  /** Places a new robot, facing North, on a cell. */
+  createRobot(cellId: number): Observable<Robot> {
+    return this.http
+      .post<ApiRobot>(`${this.api}/robots`, { cellId, direction: Direction.North })
+      .pipe(map(toRobot));
+  }
+
+  /** One robot's queue in FIFO order. */
+  getQueuedCommands(robotId: number): Observable<QueuedCommand[]> {
+    return this.http
+      .get<ApiQueuedCommand[]>(`${this.api}/robots/${robotId}/queued-commands`)
+      .pipe(map((commands) => commands.map(toQueuedCommand)));
+  }
+
+  createQueuedCommand(robotId: number, command: CommandName): Observable<QueuedCommand> {
+    return this.http
+      .post<ApiQueuedCommand>(`${this.api}/queued-commands`, { robotId, command })
+      .pipe(map(toQueuedCommand));
   }
 }

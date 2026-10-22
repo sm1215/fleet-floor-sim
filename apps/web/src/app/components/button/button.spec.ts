@@ -29,4 +29,18 @@ describe('Button', () => {
     button.click();
     expect(pressed).not.toHaveBeenCalled();
   });
+
+  it('uses the normal border, or the orange border when highlighted', async () => {
+    const fixture = TestBed.createComponent(Button);
+    fixture.componentRef.setInput('label', 'Edit');
+    await fixture.whenStable();
+    const button = (fixture.nativeElement as HTMLElement).querySelector('button')!;
+    expect(button.classList).toContain('border-[#1971c2]');
+    expect(button.classList).not.toContain('border-[#f08c00]');
+
+    fixture.componentRef.setInput('highlighted', true);
+    await fixture.whenStable();
+    expect(button.classList).toContain('border-[#f08c00]');
+    expect(button.classList).not.toContain('border-[#1971c2]');
+  });
 });

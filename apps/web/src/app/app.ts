@@ -1,10 +1,10 @@
-import { Component, HostListener, signal } from '@angular/core';
+import { Component, HostListener, inject, signal } from '@angular/core';
 import { Button } from './components/button/button';
 import { Grid } from './components/grid/grid';
 import { LogModal } from './components/log-modal/log-modal';
 import { QueuePanel } from './components/queue-panel/queue-panel';
-import { QueuedCommand } from './models/queued-command.model';
-import { Robot } from './models/robot.model';
+import { CommandName, QueuedCommand } from './models/queued-command.model';
+import { SimulationApiService } from './services/simulation-api.service';
 
 function hasModifier(event: KeyboardEvent): boolean {
   return event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
@@ -18,6 +18,9 @@ function isTextField(target: EventTarget | null): boolean {
   );
 }
 
+export const COMMAND_ERROR = 'Command failed to queue.';
+export const QUEUE_LOAD_ERROR = "Server can't be reached";
+
 @Component({
   selector: 'app-root',
   imports: [Button, Grid, LogModal, QueuePanel],
@@ -25,7 +28,9 @@ function isTextField(target: EventTarget | null): boolean {
   styleUrl: './app.css',
 })
 export class App {
-  protected readonly robots = signal<Robot[]>([]);
+  private readonly api = inject(SimulationApiService);
+
+  protected readonly editMode = signal(false);
   protected readonly selectedRobotId = signal<number | null>(null);
   protected readonly queue = signal<QueuedCommand[]>([]);
   protected readonly logOpen = signal(false);
@@ -71,7 +76,23 @@ export class App {
   }
 
   onToggleEdit(): void {
-    // Stub. Target: Frontend.
+    this.editMode.update((on) => !on);
+  }
+
+  /** Selects a robot and loads its queue; clicking the selected robot deselects it. */
+  onRobotClicked(id: number): void {
+    this.queue.set([]);
+    if (this.selectedRobotId() === id) {
+      this.selectedRobotId.set(null);
+      return;
+    }
+    this.selectedRobotId.set(id);
+    this.api.getQueuedCommands(id).subscribe({
+      next: (commands) => {
+        if (this.selectedRobotId() === id) this.queue.set(commands);
+      },
+      error: () => this.addError(QUEUE_LOAD_ERROR),
+    });
   }
 
   onOpenLog(): void {
@@ -84,14 +105,26 @@ export class App {
   }
 
   onTurnLeft(): void {
-    // Stub. Target: API / Frontend, TBD.
+    this.sendCommand('LEFT');
   }
 
   onTurnRight(): void {
-    // Stub. Target: API / Frontend, TBD.
+    this.sendCommand('RIGHT');
   }
 
   onMove(): void {
-    // Stub. Target: API / Frontend, TBD.
+    this.sendCommand('MOVE');
+  }
+
+  /** Queues a command for the selected robot; does nothing with no selection. */
+  private sendCommand(command: CommandName): void {
+    const id = this.selectedRobotId();
+    if (id === null) return;
+    this.api.createQueuedCommand(id, command).subscribe({
+      next: (queued) => {
+        if (this.selectedRobotId() === id) this.queue.update((queue) => [...queue, queued]);
+      },
+      error: () => this.addError(COMMAND_ERROR),
+    });
   }
 }

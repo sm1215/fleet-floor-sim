@@ -1,8 +1,15 @@
 <div
-  class="cell box-border h-full w-full border border-[#f08c00] p-[8%]"
-  [class]="cell().obstacle ? 'obstacle bg-[#ffec99]' : ''"
+  class="cell box-border h-full w-full border p-[8%]"
+  [class.border-black]="!editMode()"
+  [class.border-[#f08c00]]="editMode()"
+  [class.obstacle]="cell().obstacle"
+  [class.bg-[#e03131]]="cell().obstacle"
+  role="button"
+  tabindex="0"
+  (click)="clicked.emit()"
+  (keydown.enter)="clicked.emit()"
 >
   @if (robot(); as robot) {
-    <app-robot [robot]="robot" />
+    <app-robot [robot]="robot" [selected]="selected()" (clicked)="robotClicked.emit()" />
   }
 </div>

@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { Component, input, output } from '@angular/core';
 import { Cell as CellModel } from '../../models/cell.model';
 import { Robot as RobotModel } from '../../models/robot.model';
 import { Robot } from '../robot/robot';
@@ -12,4 +12,8 @@ import { Robot } from '../robot/robot';
 export class Cell {
   readonly cell = input.required<CellModel>();
   readonly robot = input<RobotModel>();
+  readonly editMode = input(false);
+  readonly selected = input(false);
+  readonly clicked = output();
+  readonly robotClicked = output();
 }

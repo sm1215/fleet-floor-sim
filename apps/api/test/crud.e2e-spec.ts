@@ -64,7 +64,7 @@ describe('CRUD (e2e)', () => {
     const cellId = await roundTrip(
       '/cells',
       { obstacle: false, xPosition: 19, yPosition: 19, floorId },
-      { obstacle: true },
+      { xPosition: 18 },
     );
     const robotId = await roundTrip(
       '/robots',
@@ -74,7 +74,7 @@ describe('CRUD (e2e)', () => {
     const commandId = await roundTrip(
       '/queued-commands',
       { command: 'MOVE', params: '', robotId },
-      { command: 'TURN_RIGHT' },
+      { command: 'RIGHT' },
     );
     const logId = await roundTrip(
       '/log-entries',

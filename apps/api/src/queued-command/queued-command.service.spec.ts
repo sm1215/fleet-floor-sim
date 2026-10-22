@@ -36,6 +36,24 @@ describe('QueuedCommandService', () => {
     });
   });
 
+  it('saves a missing params as null', async () => {
+    await service.create({ command: 'LEFT', robotId: 2 });
+    expect(repo.save).toHaveBeenCalledWith({
+      command: 'LEFT',
+      params: null,
+      robot: { id: 2 },
+    });
+  });
+
+  it("finds one robot's commands in ascending Id order", async () => {
+    await expect(service.findByRobot(3)).resolves.toEqual([row]);
+    expect(repo.find).toHaveBeenCalledWith({
+      where: { robot: { id: 3 } },
+      order: { id: 'ASC' },
+      relations: { robot: true },
+    });
+  });
+
   it('finds all with the robot relation', async () => {
     await expect(service.findAll()).resolves.toEqual([row]);
     expect(repo.find).toHaveBeenCalledWith({ relations: { robot: true } });

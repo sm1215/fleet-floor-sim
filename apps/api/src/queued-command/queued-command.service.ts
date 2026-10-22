@@ -14,11 +14,25 @@ export class QueuedCommandService {
 
   create({
     robotId,
+    params,
     ...fields
   }: CreateQueuedCommandDto): Promise<QueuedCommand> {
     return this.repo.save(
-      this.repo.create({ ...fields, robot: { id: robotId } }),
+      this.repo.create({
+        ...fields,
+        params: params ?? null,
+        robot: { id: robotId },
+      }),
     );
+  }
+
+  /** One robot's queue in FIFO order (ascending Id). */
+  findByRobot(robotId: number): Promise<QueuedCommand[]> {
+    return this.repo.find({
+      where: { robot: { id: robotId } },
+      order: { id: 'ASC' },
+      relations: { robot: true },
+    });
   }
 
   findAll(): Promise<QueuedCommand[]> {

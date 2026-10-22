@@ -1,7 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Cell } from '../../database/entities/index.js';
+import { Cell, Robot } from '../../database/entities/index.js';
 import { CreateCellDto } from './dto/create-cell.dto.js';
 import { UpdateCellDto } from './dto/update-cell.dto.js';
 
@@ -9,6 +13,7 @@ import { UpdateCellDto } from './dto/update-cell.dto.js';
 export class CellService {
   constructor(
     @InjectRepository(Cell) private readonly repo: Repository<Cell>,
+    @InjectRepository(Robot) private readonly robotRepo: Repository<Robot>,
   ) {}
 
   create({ floorId, ...fields }: CreateCellDto): Promise<Cell> {
@@ -35,6 +40,12 @@ export class CellService {
     { floorId, ...fields }: UpdateCellDto,
   ): Promise<Cell> {
     await this.findOne(id);
+    if (
+      fields.obstacle === true &&
+      (await this.robotRepo.exists({ where: { cell: { id } } }))
+    ) {
+      throw new BadRequestException(`Cell ${id} has a robot`);
+    }
     await this.repo.save({
       id,
       ...fields,

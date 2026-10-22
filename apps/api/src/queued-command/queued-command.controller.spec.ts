@@ -4,7 +4,7 @@ import { QueuedCommandService } from './queued-command.service.js';
 
 describe('QueuedCommandController', () => {
   const createDto = { command: 'MOVE' as const, params: '', robotId: 1 };
-  const updateDto = { command: 'TURN_LEFT' as const };
+  const updateDto = { command: 'LEFT' as const };
   const row = { id: 1, ...createDto };
   const service = {
     create: vi.fn().mockResolvedValue(row),

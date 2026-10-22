@@ -11,6 +11,13 @@ paths:
 - Origin (0,0) is the bottom-left cell, unlike native CSS top-left flow.
 - X grows to the east (right). Y grows to the north (up). Render the top row (y = height - 1) first.
 
+## Axis labels
+
+- Label every row with its y number on the left of the grid, and every column with its x number
+  below the grid. Numbering starts at 0 at the origin: row labels run from 0 at the bottom up to
+  height - 1; column labels run from 0 at the left to width - 1.
+- Labels follow the current size, so a height increase visibly adds new numbered rows at the top.
+
 ## Ownership
 
 - Grid owns the floor state: it injects `SimulationApiService`, loads the floor,
@@ -29,6 +36,7 @@ paths:
 
 ## Resize behavior (enforced by the API on PATCH /floors/:id; client does not orchestrate)
 
+- Robots whose cell is still inside the new bounds stay on that cell (same x, y).
 - Growing: an Open cell is created for each new coordinate.
 - Shrinking: cells outside the new bounds are deleted. Robots on those cells move
   to the nearest Open cell inside the new bounds that has no robot on it.
@@ -61,6 +69,8 @@ Client (`grid.spec.ts`):
 
 - Sliders have min 1, max 20, step 1 and default to 5 before the floor loads.
 - Renders bottom-left as (0,0): the first rendered row is y = height - 1, and x increases left to right.
+- Row labels read height - 1 down to 0 (top to bottom); column labels read 0 to width - 1 (left to right).
+- After a height increase, the new row labels appear at the top and existing labels keep their numbers.
 - Init with an empty `GET /floors` → `POST /floors` called with width 5, height 5; UI shows 5x5.
 - Init with an existing floor → no POST; sliders and grid show that floor's width/height.
 - Slider `input` event does not call PATCH; `change` event calls `PATCH /floors/:id` once with the new values.
@@ -75,6 +85,7 @@ API (`floor.service.spec.ts`):
 - Width/height outside 1–20 are rejected (DTO validation).
 - Grow → an Open cell exists for every new coordinate; existing cells are unchanged.
 - Shrink → cells outside the new bounds are deleted.
+- Resize (grow or shrink) → robots on cells still inside the bounds keep their cell.
 - Shrink → a displaced robot moves to the nearest free Open cell by Manhattan distance.
 - Manhattan tie → lowest y, then lowest x wins.
 - Mixed resize (one axis grows, the other shrinks) → newly created cells are valid targets.

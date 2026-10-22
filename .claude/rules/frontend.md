@@ -16,6 +16,7 @@ paths:
 
 - Errors show inline, in red text, below the grid and above the movement controls.
 - Errors stack: each new error is added to the list. Each has an X button that dismisses only that error.
+- The X button matches the app-button colors, border, and hover, as a compact square with the X centered both ways and a pointer cursor on mouseover: `flex h-6 w-6 cursor-pointer items-center justify-center rounded border-2 bg-[#a5d8ff] leading-none text-[#1971c2] hover:brightness-95`.
 - The list has a max height of 50px (`max-h-[50px]`) and scrolls vertically (`overflow-y-auto`).
 - With more than one error, a `Clear errors` button appears at the bottom right and removes every error.
 

@@ -23,10 +23,12 @@ const DEFAULT_SIZE = 5;
 
 export const RESIZE_ERROR = "Can't resize grid, not enough space for existing robots";
 export const SERVER_ERROR = "Server can't be reached";
+export const PLACE_ERROR = 'Robot failed to place.';
 
 interface LoadedFloor {
   floor: Floor;
   cells: CellModel[];
+  robots: Robot[];
 }
 
 @Component({
@@ -40,12 +42,15 @@ export class Grid implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
   private readonly sizeChanges = new Subject<FloorSize>();
 
-  readonly robots = input<Robot[]>([]);
+  readonly editMode = input(false);
+  readonly selectedRobotId = input<number | null>(null);
   readonly gridError = output<string>();
+  readonly robotClicked = output<number>();
 
   /** The last saved floor whose cells are shown. */
   protected readonly floor = signal<Floor | null>(null);
   protected readonly cells = signal<CellModel[]>([]);
+  protected readonly robots = signal<Robot[]>([]);
   /** Slider values; differ from floor() only while a change is unsaved. */
   protected readonly width = signal(DEFAULT_SIZE);
   protected readonly height = signal(DEFAULT_SIZE);
@@ -60,6 +65,17 @@ export class Grid implements OnInit {
   /** Cells in render order: top row (y = height - 1) first, down to y = 0; x left to right. */
   protected readonly orderedCells = computed(() =>
     [...this.cells()].sort((a, b) => b.yPosition - a.yPosition || a.xPosition - b.xPosition),
+  );
+
+  /** Row labels in render order: height - 1 at the top, down to 0. */
+  protected readonly rowLabels = computed(() => {
+    const height = this.floor()?.height ?? 0;
+    return Array.from({ length: height }, (_, i) => height - 1 - i);
+  });
+
+  /** Column labels left to right: 0 to width - 1. */
+  protected readonly columnLabels = computed(() =>
+    Array.from({ length: this.floor()?.width ?? 0 }, (_, i) => i),
   );
 
   protected readonly robotsByCell = computed(
@@ -108,14 +124,49 @@ export class Grid implements OnInit {
     this.sizeChanges.next({ width: this.width(), height: this.height() });
   }
 
-  private withCells(floor: Floor): Observable<LoadedFloor> {
-    return this.api.getCells(floor.id).pipe(map((cells) => ({ floor, cells })));
+  /**
+   * Edit mode on: toggles Open/Obstacle, unless a robot is on the cell.
+   * Edit mode off: places a robot on an empty Open cell.
+   */
+  protected onCellClick(cell: CellModel): void {
+    if (this.robotsByCell().has(cell.id)) return;
+    if (this.editMode()) {
+      this.api
+        .updateCell(cell.id, { obstacle: !cell.obstacle })
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: (updated) =>
+            this.cells.update((cells) => cells.map((c) => (c.id === updated.id ? updated : c))),
+          // The cell stays as it was.
+          error: () => undefined,
+        });
+    } else if (!cell.obstacle) {
+      this.api
+        .createRobot(cell.id)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: (robot) => this.robots.update((robots) => [...robots, robot]),
+          error: () => this.gridError.emit(PLACE_ERROR),
+        });
+    }
   }
 
-  /** Shows a floor and its cells together, so the grid never lays out stale cells. */
-  private show({ floor, cells }: LoadedFloor): void {
+  /** Loads cells, then robots: a resize can move robots to other cells. */
+  private withCells(floor: Floor): Observable<LoadedFloor> {
+    return this.api
+      .getCells(floor.id)
+      .pipe(
+        switchMap((cells) =>
+          this.api.getRobots().pipe(map((robots) => ({ floor, cells, robots }))),
+        ),
+      );
+  }
+
+  /** Shows a floor, its cells and robots together, so the grid never lays out stale cells. */
+  private show({ floor, cells, robots }: LoadedFloor): void {
     this.floor.set(floor);
     this.cells.set(cells);
+    this.robots.set(robots);
     this.syncSliders();
   }
 

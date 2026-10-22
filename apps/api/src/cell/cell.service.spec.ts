@@ -1,7 +1,7 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Cell } from '../../database/entities/index.js';
+import { Cell, Robot } from '../../database/entities/index.js';
 import { CellService } from './cell.service.js';
 
 describe('CellService', () => {
@@ -9,6 +9,7 @@ describe('CellService', () => {
   const { floorId, ...fields } = createDto;
   const row = { id: 1, ...fields, floor: { id: floorId } };
   let repo: Record<string, ReturnType<typeof vi.fn>>;
+  let robotRepo: Record<string, ReturnType<typeof vi.fn>>;
   let service: CellService;
 
   beforeEach(async () => {
@@ -19,10 +20,12 @@ describe('CellService', () => {
       findOne: vi.fn().mockResolvedValue(row),
       remove: vi.fn().mockResolvedValue(row),
     };
+    robotRepo = { exists: vi.fn().mockResolvedValue(false) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         CellService,
         { provide: getRepositoryToken(Cell), useValue: repo },
+        { provide: getRepositoryToken(Robot), useValue: robotRepo },
       ],
     }).compile();
     service = moduleRef.get(CellService);
@@ -61,6 +64,23 @@ describe('CellService', () => {
     expect(repo.save).toHaveBeenLastCalledWith({ id: 1, floor: { id: 7 } });
     await service.update(1, {});
     expect(repo.save).toHaveBeenLastCalledWith({ id: 1 });
+  });
+
+  it('rejects obstacle: true on a cell with a robot; the cell is unchanged', async () => {
+    robotRepo.exists.mockResolvedValue(true);
+    await expect(service.update(1, { obstacle: true })).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(robotRepo.exists).toHaveBeenCalledWith({
+      where: { cell: { id: 1 } },
+    });
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('allows obstacle: false on a cell with a robot', async () => {
+    robotRepo.exists.mockResolvedValue(true);
+    await service.update(1, { obstacle: false });
+    expect(repo.save).toHaveBeenCalledWith({ id: 1, obstacle: false });
   });
 
   it('removes a row', async () => {
