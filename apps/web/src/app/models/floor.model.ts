@@ -3,3 +3,5 @@ export interface Floor {
   height: number;
   width: number;
 }
+
+export type FloorSize = Pick<Floor, 'width' | 'height'>;

@@ -74,7 +74,7 @@ for robot in displaced robots sorted by id ascending:
   pick min by (manhattan(old pos, cell), cell.y, cell.x); none → return null
   occupied.add(pick.id); moves.push({ robotId, cellId: pick.id })
 ```
-Newly created cells are Open and empty, but they only exist when growing, and growing displaces nobody. So they never need to be candidates.
+~~Newly created cells never need to be candidates.~~ Wrong for a mixed resize (one axis grows, the other shrinks): newly created cells are candidates too. See Review fixes.
 
 Order of writes in `update`: save the new size, insert the `create` cells, update the robots' `cell` from `moves`, then delete `deleteCellIds`. All of it runs in one transaction.
 
@@ -170,3 +170,13 @@ Order of writes in `update`: save the new size, insert the `create` cells, updat
 - [ ] **Step 5: Manual check** (`npm run dev:api` + `npm run dev:web`). Fresh DB → 5×5. Drag width to 8 and release → 8×5, and it survives a reload and an API restart. To see the error, insert robots via `POST /robots` on cells (3,*) and (4,*) of a 5×1 floor. Shrink to 1 → the red error shows and the slider snaps back.
 - [ ] **Step 6: Commit** Tasks 3+4 (ask first) `feat(web): grid loads floor, size sliders, error list`.
 - [ ] **Step 7:** Append an `AI_USAGE.md` entry (≤500 chars).
+
+## Review fixes (2026-10-22)
+
+From the whole-branch review. User decisions in brackets.
+
+- `planResize`: candidates are kept Open cells plus `create` positions. `moves` is now `{ robotId, to: Position }[]`; `update` resolves the target cell id after the insert. Tests: mixed resize to a new cell, nearer new cell beats farther kept cell, 1×1 with (0,0) Obstacle.
+- Grid: one `switchMap` pipeline for load and for slider releases. Floor and cells are set together; a newer release cancels the earlier request. Output renamed `resizeError` → `gridError`.
+- [Minor 3, 4] Load failures and non-409 PATCH failures emit `SERVER_ERROR = "Server can't be reached"`.
+- [Minor 5] Tests: two releases in a row, 1×1 Obstacle case.
+- [Minor 6] Ignored. [Minor 7] Accepted as is.

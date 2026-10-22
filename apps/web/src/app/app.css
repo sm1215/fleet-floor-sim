@@ -12,6 +12,7 @@
   grid-template-areas:
     'top .'
     'grid queue'
+    'errors .'
     'controls .';
 }
 
@@ -30,6 +31,10 @@
   max-height: 400px;
 }
 
+.area-errors {
+  grid-area: errors;
+}
+
 .area-controls {
   grid-area: controls;
 }
@@ -41,6 +46,7 @@
     grid-template-areas:
       'top'
       'grid'
+      'errors'
       'queue'
       'controls';
   }

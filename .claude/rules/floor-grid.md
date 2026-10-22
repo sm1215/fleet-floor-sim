@@ -43,6 +43,14 @@ paths:
 - Show the message exactly: `Can't resize grid, not enough space for existing robots`,
   shown per Errors in `frontend.md`.
 
+## Server error
+
+- Any other failure (load, save, or cell reload; any status other than 409, including no response)
+  shows `Server can't be reached`, per Errors in `frontend.md`. A failed save reverts the sliders
+  and the grid to the last saved size.
+- The new size and its cells show together. A response to an earlier slider release is ignored
+  once a newer release has been sent.
+
 ## Testing
 
 Every behavioral rule above has at least one test. Add or change a rule → add or change its test.
@@ -58,6 +66,9 @@ Client (`grid.spec.ts`):
 - Slider `input` event does not call PATCH; `change` event calls `PATCH /floors/:id` once with the new values.
 - Rejected PATCH → sliders and grid revert to the last saved size.
 - Rejected PATCH → the exact error text appears.
+- Non-409 PATCH failure, or a load failure (`GET /floors`, `POST /floors`, `GET /cells`) → `Server can't be reached`.
+- After a successful PATCH the grid keeps the old size until the new cells arrive.
+- A late response to an earlier release changes nothing.
 
 API (`floor.service.spec.ts`):
 
@@ -66,6 +77,7 @@ API (`floor.service.spec.ts`):
 - Shrink → cells outside the new bounds are deleted.
 - Shrink → a displaced robot moves to the nearest free Open cell by Manhattan distance.
 - Manhattan tie → lowest y, then lowest x wins.
+- Mixed resize (one axis grows, the other shrinks) → newly created cells are valid targets.
 - Target excludes Obstacle cells and cells that already have a robot.
 - Multiple displaced robots → placed in ascending Id order, each claiming its cell first.
 - Not enough room → the error is returned, and floor, cells and robots are all unchanged.

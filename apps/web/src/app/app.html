@@ -8,7 +8,25 @@
     <app-button label="Log" (pressed)="onOpenLog()" />
   </div>
 
-  <app-grid class="area-grid" [floor]="floor()" [cells]="cells()" [robots]="robots()" />
+  <app-grid class="area-grid" [robots]="robots()" (gridError)="addError($event)" />
+
+  <div class="area-errors">
+    <ul class="max-h-[50px] overflow-y-auto text-red-600">
+      @for (error of errors(); track error.id) {
+        <li class="flex items-center gap-2">
+          <span>{{ error.text }}</span>
+          <button type="button" aria-label="Dismiss error" (click)="dismissError(error.id)">
+            ×
+          </button>
+        </li>
+      }
+    </ul>
+    @if (errors().length > 1) {
+      <div class="flex justify-end">
+        <app-button label="Clear errors" (pressed)="clearErrors()" />
+      </div>
+    }
+  </div>
 
   <app-queue-panel class="area-queue" [robotId]="selectedRobotId()" [commands]="queue()" />
 

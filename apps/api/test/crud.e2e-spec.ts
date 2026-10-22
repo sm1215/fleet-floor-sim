@@ -1,20 +1,9 @@
-/// <reference types="vite/client" />
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { entities } from './../database/entities/index.js';
 import { featureModules } from './../src/app.module.js';
-
-// Load migrations through Vite: TypeORM's own glob loader imports the .ts
-// files natively, which fails on their type-only imports.
-const migrations = Object.values(
-  import.meta.glob<Record<string, new () => unknown>>(
-    '../database/migrations/*.ts',
-    { eager: true },
-  ),
-).flatMap((mod) => Object.values(mod));
+import { sqliteTestDb } from './sqlite-test-db.js';
 
 describe('CRUD (e2e)', () => {
   let app: INestApplication<App>;
@@ -22,17 +11,7 @@ describe('CRUD (e2e)', () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [
-        TypeOrmModule.forRoot({
-          type: 'better-sqlite3',
-          database: ':memory:',
-          entities,
-          migrations,
-          migrationsRun: true,
-          synchronize: false,
-        }),
-        ...featureModules,
-      ],
+      imports: [sqliteTestDb(':memory:'), ...featureModules],
     }).compile();
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(
@@ -84,7 +63,7 @@ describe('CRUD (e2e)', () => {
     );
     const cellId = await roundTrip(
       '/cells',
-      { obstacle: false, xPosition: 0, yPosition: 0, floorId },
+      { obstacle: false, xPosition: 19, yPosition: 19, floorId },
       { obstacle: true },
     );
     const robotId = await roundTrip(
@@ -116,7 +95,7 @@ describe('CRUD (e2e)', () => {
     const floorId = (floor.body as { id: number }).id;
     const cell = await http()
       .post('/cells')
-      .send({ obstacle: false, xPosition: 1, yPosition: 1, floorId })
+      .send({ obstacle: false, xPosition: 19, yPosition: 19, floorId })
       .expect(201);
     const res = await http()
       .get(`/cells/${(cell.body as { id: number }).id}`)
@@ -143,7 +122,7 @@ describe('CRUD (e2e)', () => {
     const floorId = (floor.body as { id: number }).id;
     const cell = await http()
       .post('/cells')
-      .send({ obstacle: false, xPosition: 0, yPosition: 0, floorId });
+      .send({ obstacle: false, xPosition: 19, yPosition: 19, floorId });
     const cellId = (cell.body as { id: number }).id;
     const robot = await http().post('/robots').send({ direction: 0, cellId });
     const robotId = (robot.body as { id: number }).id;

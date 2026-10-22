@@ -1,18 +1,46 @@
-<div
-  class="floor grid w-fit"
-  [style.grid-template-columns]="'repeat(' + floor().width + ', ' + cellSize() + 'px)'"
-  [style.grid-template-rows]="'repeat(' + floor().height + ', ' + cellSize() + 'px)'"
->
-  @for (cell of orderedCells(); track cell.id) {
-    <app-cell
-      [cell]="cell"
-      [robot]="robotsByCell().get(cell.id)"
-      [attr.data-x]="cell.xPosition"
-      [attr.data-y]="cell.yPosition"
+<div class="mb-2 flex gap-4 text-sm">
+  <label class="flex items-center gap-2">
+    Width
+    <input
+      type="range"
+      min="1"
+      max="20"
+      step="1"
+      aria-label="Width"
+      [value]="width()"
+      (input)="width.set($any($event.target).valueAsNumber)"
+      (change)="onSizeChange()"
     />
-  }
+    <span>{{ width() }}</span>
+  </label>
+  <label class="flex items-center gap-2">
+    Height
+    <input
+      type="range"
+      min="1"
+      max="20"
+      step="1"
+      aria-label="Height"
+      [value]="height()"
+      (input)="height.set($any($event.target).valueAsNumber)"
+      (change)="onSizeChange()"
+    />
+    <span>{{ height() }}</span>
+  </label>
 </div>
-<div class="mt-1 flex items-center gap-2 text-sm">
-  <span class="inline-block h-3 w-3 rounded-full bg-[#1e1e1e]"></span>
-  <span>Origin: 0,0</span>
-</div>
+@if (floor(); as floor) {
+  <div
+    class="floor grid w-fit"
+    [style.grid-template-columns]="'repeat(' + floor.width + ', ' + cellSize() + 'px)'"
+    [style.grid-template-rows]="'repeat(' + floor.height + ', ' + cellSize() + 'px)'"
+  >
+    @for (cell of orderedCells(); track cell.id) {
+      <app-cell
+        [cell]="cell"
+        [robot]="robotsByCell().get(cell.id)"
+        [attr.data-x]="cell.xPosition"
+        [attr.data-y]="cell.yPosition"
+      />
+    }
+  </div>
+}
