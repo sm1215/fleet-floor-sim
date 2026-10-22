@@ -63,3 +63,25 @@ User asked for the inline error X to look more like a button, with a pointer cur
 Applied the error X button style from frontend.md to app.html (bordered red box, hover:bg-red-100, cursor-pointer). Prettier OK; web tests 122 pass. Not committed.
 
 User asked for the error X to match the other buttons, centered. Asked size (app-button is ~40px, list is 50px); user picked compact. X now uses app-button colors/border/hover in an h-6 w-6 flex square, centered both ways. Updated frontend.md + app.html. Web tests 122 pass. Not committed.
+
+User asked to move all current changes from robot-rules to main and not make new branches again. Both branches were at the same commit, so git switch main carried all 48 uncommitted changes over. robot-rules branch left in place (not deleted). Not committed.
+
+User asked to add the rules file from engine-plan.md. Created .claude/rules/engine.md scoped to apps/engine/**: currentTick (0, +1), tickRate (1000ms), running, step() calls doNext() from apps/queue and awaits it, errors shown under the grid, auto-step while running, step + toggle endpoints. camelCase picked to match existing methods. Not committed.
+
+User confirmed the engine lives in apps/engine. Updated CLAUDE.md: folder structure now lists apps/engine/ (Engine) and drops Engine from the apps/api line; added engine.md to the Rules files list. Not committed.
+
+User asked to add the rules file from command-plan.md. Created .claude/rules/commands.md (apps/api, apps/engine, apps/queue): POST /commands/<name> per command, RId -> displayId, LEFT/RIGHT/MOVE enqueue and run per tick via step()/doNext(), MOVE resolution + block reasons in tick response, ignored requests -> descriptive 400, PLACE uses NORTH/EAST/..., REPORT to stdout. Updated robot-rules Identity and CLAUDE.md list. Not committed.
+
+User asked to add the rules file from queue-plan.md (the plan's cut-off line was fixed by the user). Created .claude/rules/queue.md (apps/queue/**): doNext() returns a promise, orders robots by displayId (user choice), returns each robot's next parsed command for the Engine to execute, and deletes it whether it succeeds or fails. Aligned commands.md/engine.md; added apps/queue + queue.md to CLAUDE.md. Not committed.
+
+User decided doNext() leaves commands that fail to parse out of its result (they are still deleted). Added the rule and a test line to queue.md. Not committed.
+
+Implemented engine.md. User chose: stub apps/queue doNext (remove when queue lands), plain TS engine, poll GET /engine, wire Step/Play. Approved config: root "type":"module", API rootDir "..", build to dist/api/src, lint/vitest/prettier cover engine+queue. API: GET /engine, POST /engine/step, /engine/toggle. Errors shown under grid. Tests: API 112, e2e 14, web 133. Not committed.
+
+User asked for a subagent code review of the engine implementation. Dispatched a read-only general-purpose reviewer against uncommitted changes vs HEAD 9eedd4f, checking engine/queue/command code against engine-plan, engine-impl-plan, queue-plan, command-plan and the rules files. It may run test/lint/build. Not committed.
+
+Engine review result: with fixes. Critical: stray tsc output (.js/.d.ts/.map) in apps/engine and apps/queue shadow .ts in tests and break lint. Important: pause/resume during a step can create a 2nd timer chain; manual Step can overlap an auto step; queue/commands still stubbed. Plan issue: displayId not in diagram. No fixes applied yet.
+
+Applied review fixes. User chose: delete stray build files, gitignore them, fix pause/resume timer (run counter + test), and Step while running -> API 400 + Step disabled in UI. Updated engine.md. Deleting the files was blocked by permissions; user to delete. Tests API 114 / web 134 pass; lint fails only on the stray .d.ts. Not committed.
+
+User deleted the stray build files. Reran: tests API 114 / web 134 pass against the .ts sources; lint passes for API and web. Not committed.

@@ -7,6 +7,7 @@ import { App } from './app';
 import { Grid } from './components/grid/grid';
 import { Cell } from './models/cell.model';
 import { Direction } from './models/direction';
+import { EngineState } from './models/engine-state.model';
 import { CommandName, QueuedCommand } from './models/queued-command.model';
 import { SimulationApiService } from './services/simulation-api.service';
 
@@ -42,6 +43,10 @@ function makeCells(width: number, height: number): Cell[] {
   return cells;
 }
 
+function engineState(change: Partial<EngineState> = {}): EngineState {
+  return { currentTick: 0, tickRate: 1000, running: false, errors: [], ...change };
+}
+
 describe('App', () => {
   beforeAll(stubDialog);
 
@@ -54,7 +59,10 @@ describe('App', () => {
     | 'getRobots'
     | 'createRobot'
     | 'getQueuedCommands'
-    | 'createQueuedCommand',
+    | 'createQueuedCommand'
+    | 'getEngine'
+    | 'stepEngine'
+    | 'toggleEngine',
     ReturnType<typeof vi.fn>
   >;
 
@@ -76,6 +84,9 @@ describe('App', () => {
       createQueuedCommand: vi.fn((robotId: number, command: CommandName) =>
         of({ id: 100, command, params: null, robotId }),
       ),
+      getEngine: vi.fn(() => of(engineState())),
+      stepEngine: vi.fn(() => of(engineState({ currentTick: 1 }))),
+      toggleEngine: vi.fn(() => of(engineState({ running: true }))),
     };
     TestBed.configureTestingModule({
       providers: [{ provide: SimulationApiService, useValue: api }],
@@ -466,6 +477,99 @@ describe('App', () => {
       late.next(queues[7]);
       await fixture.whenStable();
       expect(queueItems(el)).toEqual(['RIGHT']);
+    });
+  });
+
+  describe('engine', () => {
+    function errorTexts(el: HTMLElement): string[] {
+      return Array.from(el.querySelectorAll('.area-errors li')).map((li) =>
+        li.textContent!.replace('×', '').trim(),
+      );
+    }
+
+    afterEach(() => vi.useRealTimers());
+
+    it('loads the engine state on start', async () => {
+      await setup();
+      expect(api.getEngine).toHaveBeenCalledTimes(1);
+    });
+
+    it('Step → POST /engine/step', async () => {
+      const fixture = await setup();
+      buttonNamed(fixture.nativeElement, 'Step')!.click();
+      expect(api.stepEngine).toHaveBeenCalledTimes(1);
+    });
+
+    it('a failed step shows the API message under the grid', async () => {
+      api.stepEngine.mockReturnValue(
+        throwError(() => new HttpErrorResponse({ status: 500, error: { message: 'boom' } })),
+      );
+      const fixture = await setup();
+      buttonNamed(fixture.nativeElement, 'Step')!.click();
+      await fixture.whenStable();
+      expect(errorTexts(fixture.nativeElement)).toEqual(['boom']);
+    });
+
+    it('an unreachable server on Step shows the server error', async () => {
+      api.stepEngine.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 0 })));
+      const fixture = await setup();
+      buttonNamed(fixture.nativeElement, 'Step')!.click();
+      await fixture.whenStable();
+      expect(errorTexts(fixture.nativeElement)).toEqual(["Server can't be reached"]);
+    });
+
+    it('Step is disabled while running and re-enabled once paused', async () => {
+      const fixture = await setup();
+      const step = () => buttonNamed(fixture.nativeElement, 'Step')!;
+      expect(step().disabled).toBe(false);
+
+      buttonNamed(fixture.nativeElement, 'Play / Pause')!.click();
+      await fixture.whenStable();
+      expect(step().disabled).toBe(true);
+      step().click();
+      expect(api.stepEngine).not.toHaveBeenCalled();
+
+      api.toggleEngine.mockReturnValue(of(engineState({ running: false })));
+      buttonNamed(fixture.nativeElement, 'Play / Pause')!.click();
+      await fixture.whenStable();
+      expect(step().disabled).toBe(false);
+    });
+
+    it('Play / Pause → POST /engine/toggle', async () => {
+      const fixture = await setup();
+      buttonNamed(fixture.nativeElement, 'Play / Pause')!.click();
+      expect(api.toggleEngine).toHaveBeenCalledTimes(1);
+    });
+
+    it('while running, polls GET /engine every tickRate ms and shows its errors', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      const fixture = await setup();
+      api.getEngine.mockReturnValue(of(engineState({ running: true, errors: ['boom'] })));
+      buttonNamed(fixture.nativeElement, 'Play / Pause')!.click();
+      await vi.advanceTimersByTimeAsync(999);
+      expect(api.getEngine).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(api.getEngine).toHaveBeenCalledTimes(2);
+      await fixture.whenStable();
+      expect(errorTexts(fixture.nativeElement)).toEqual(['boom']);
+    });
+
+    it('stops polling once paused', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      const fixture = await setup();
+      buttonNamed(fixture.nativeElement, 'Play / Pause')!.click();
+      api.toggleEngine.mockReturnValue(of(engineState({ running: false })));
+      buttonNamed(fixture.nativeElement, 'Play / Pause')!.click();
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(api.getEngine).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts polling when the engine is already running on load', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      api.getEngine.mockReturnValue(of(engineState({ running: true })));
+      await setup();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(api.getEngine).toHaveBeenCalledTimes(2);
     });
   });
 });

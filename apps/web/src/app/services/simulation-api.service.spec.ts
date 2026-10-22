@@ -129,4 +129,27 @@ describe('SimulationApiService', () => {
     req.flush({ id: 3, command: 'RIGHT', params: null, robot: { id: 5 } });
     expect(result).toEqual({ id: 3, command: 'RIGHT', params: null, robotId: 5 });
   });
+
+  const state = { currentTick: 1, tickRate: 1000, running: false, errors: [] };
+
+  it('getEngine → GET /engine', () => {
+    service.getEngine().subscribe();
+    const req = http.expectOne(`${api}/engine`);
+    expect(req.request.method).toBe('GET');
+    req.flush(state);
+  });
+
+  it('stepEngine → POST /engine/step', () => {
+    service.stepEngine().subscribe();
+    const req = http.expectOne(`${api}/engine/step`);
+    expect(req.request.method).toBe('POST');
+    req.flush(state);
+  });
+
+  it('toggleEngine → POST /engine/toggle', () => {
+    service.toggleEngine().subscribe();
+    const req = http.expectOne(`${api}/engine/toggle`);
+    expect(req.request.method).toBe('POST');
+    req.flush({ ...state, running: true });
+  });
 });

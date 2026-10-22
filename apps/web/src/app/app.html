@@ -2,7 +2,7 @@
   <h1 class="sr-only">Fleet Floor Simulator</h1>
 
   <div class="area-top flex justify-end gap-3">
-    <app-button label="Step" (pressed)="onStep()" />
+    <app-button label="Step" [disabled]="running()" (pressed)="onStep()" />
     <app-button label="Play / Pause" (pressed)="onPlayPause()" />
     <app-button
       [label]="editMode() ? 'Edit: On' : 'Edit: Off'"

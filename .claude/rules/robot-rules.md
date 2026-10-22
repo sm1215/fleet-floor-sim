@@ -14,7 +14,7 @@ paths:
 
 ## Identity
 
-- Display ID is uppercase `R` + the database Id (e.g. `R12`).
+- Display ID is uppercase `R` + the robot's `displayId` column (e.g. `R12`). `displayId` is separate from the primary key Id (see `commands.md`).
 
 ## Direction
 

@@ -4,6 +4,7 @@ import { map, Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { Cell } from '../models/cell.model';
 import { Direction } from '../models/direction';
+import { EngineState } from '../models/engine-state.model';
 import { Floor, FloorSize } from '../models/floor.model';
 import { CommandName, QueuedCommand } from '../models/queued-command.model';
 import { Robot } from '../models/robot.model';
@@ -90,5 +91,18 @@ export class SimulationApiService {
     return this.http
       .post<ApiQueuedCommand>(`${this.api}/queued-commands`, { robotId, command })
       .pipe(map(toQueuedCommand));
+  }
+
+  getEngine(): Observable<EngineState> {
+    return this.http.get<EngineState>(`${this.api}/engine`);
+  }
+
+  stepEngine(): Observable<EngineState> {
+    return this.http.post<EngineState>(`${this.api}/engine/step`, {});
+  }
+
+  /** Turns the engine's automatic stepping on or off. */
+  toggleEngine(): Observable<EngineState> {
+    return this.http.post<EngineState>(`${this.api}/engine/toggle`, {});
   }
 }

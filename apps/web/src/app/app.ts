@@ -1,8 +1,11 @@
-import { Component, HostListener, inject, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, DestroyRef, HostListener, inject, signal } from '@angular/core';
+import { interval, Subscription, switchMap } from 'rxjs';
 import { Button } from './components/button/button';
 import { Grid } from './components/grid/grid';
 import { LogModal } from './components/log-modal/log-modal';
 import { QueuePanel } from './components/queue-panel/queue-panel';
+import { EngineState } from './models/engine-state.model';
 import { CommandName, QueuedCommand } from './models/queued-command.model';
 import { SimulationApiService } from './services/simulation-api.service';
 
@@ -21,6 +24,12 @@ function isTextField(target: EventTarget | null): boolean {
 export const COMMAND_ERROR = 'Command failed to queue.';
 export const QUEUE_LOAD_ERROR = "Server can't be reached";
 
+/** The API's error message (e.g. a failed step), or the unreachable-server text. */
+function serverMessage(error: unknown): string {
+  const message: unknown = error instanceof HttpErrorResponse ? error.error?.message : undefined;
+  return typeof message === 'string' ? message : QUEUE_LOAD_ERROR;
+}
+
 @Component({
   selector: 'app-root',
   imports: [Button, Grid, LogModal, QueuePanel],
@@ -34,8 +43,20 @@ export class App {
   protected readonly selectedRobotId = signal<number | null>(null);
   protected readonly queue = signal<QueuedCommand[]>([]);
   protected readonly logOpen = signal(false);
+  /** Engine is playing; Step is disabled (the API also rejects it). */
+  protected readonly running = signal(false);
   protected readonly errors = signal<{ id: number; text: string }[]>([]);
   private nextErrorId = 1;
+  private poll: Subscription | undefined;
+
+  constructor() {
+    // Picks up a server that is already running. A load failure is already reported by the grid.
+    this.api.getEngine().subscribe({
+      next: (state) => this.applyEngineState(state),
+      error: () => undefined,
+    });
+    inject(DestroyRef).onDestroy(() => this.stopPolling());
+  }
 
   @HostListener('document:keydown', ['$event'])
   onKeydown(event: KeyboardEvent): void {
@@ -68,11 +89,41 @@ export class App {
   }
 
   onStep(): void {
-    // Stub. Target: API.
+    this.api.stepEngine().subscribe({
+      next: (state) => this.applyEngineState(state),
+      error: (error: unknown) => this.addError(serverMessage(error)),
+    });
   }
 
   onPlayPause(): void {
-    // Stub. Target: API.
+    this.api.toggleEngine().subscribe({
+      next: (state) => this.applyEngineState(state),
+      error: (error: unknown) => this.addError(serverMessage(error)),
+    });
+  }
+
+  /** Shows errors from automatic steps and polls GET /engine every tickRate ms while running. */
+  private applyEngineState(state: EngineState): void {
+    for (const text of state.errors) this.addError(text);
+    this.running.set(state.running);
+    if (!state.running) {
+      this.stopPolling();
+    } else if (!this.poll) {
+      this.poll = interval(state.tickRate)
+        .pipe(switchMap(() => this.api.getEngine()))
+        .subscribe({
+          next: (polled) => this.applyEngineState(polled),
+          error: () => {
+            this.poll = undefined;
+            this.addError(QUEUE_LOAD_ERROR);
+          },
+        });
+    }
+  }
+
+  private stopPolling(): void {
+    this.poll?.unsubscribe();
+    this.poll = undefined;
   }
 
   onToggleEdit(): void {

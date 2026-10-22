@@ -5,6 +5,7 @@ import { entities } from '../database/entities/index.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { CellModule } from './cell/cell.module.js';
+import { EngineModule } from './engine/engine.module.js';
 import { FloorModule } from './floor/floor.module.js';
 import { LogEntryModule } from './log-entry/log-entry.module.js';
 import { QueuedCommandModule } from './queued-command/queued-command.module.js';
@@ -16,6 +17,7 @@ export const featureModules = [
   RobotModule,
   QueuedCommandModule,
   LogEntryModule,
+  EngineModule,
 ];
 
 @Module({
