@@ -1,4 +1,4 @@
-<div class="mb-2 flex gap-4 text-sm">
+<div class="flex justify-center gap-4 text-sm [grid-area:sliders]">
   <label class="flex items-center gap-2">
     Width
     <input
@@ -29,7 +29,7 @@
   </label>
 </div>
 @if (floor(); as floor) {
-  <div class="grid w-fit grid-cols-[auto_auto] text-xs">
+  <div class="grid w-fit grid-cols-[auto_auto] text-xs [grid-area:grid]">
     <div
       class="row-labels grid pr-1"
       [style.grid-template-rows]="'repeat(' + floor.height + ', ' + cellSize() + 'px)'"
