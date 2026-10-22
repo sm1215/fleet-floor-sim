@@ -110,3 +110,6 @@ Path-scoped rules in `.claude/rules/` load when working on matching files:
 - `backend.md` — `apps/api/**`
 - `database.md` — `apps/api/database/**`, `apps/api/**/*.entity.ts`
 - `frontend.md` — `apps/web/**`
+- `floor-grid.md` — `apps/web/src/app/components/grid/**`
+- `edit-mode.md` — `apps/web/src/app/app.*`, `components/button/**`, `components/grid/**`, `components/cell/**`
+- `robot-rules.md` — `apps/web/src/app/app.*`, `components/robot/**`, `components/grid/**`, `components/cell/**`, `components/queue-panel/**`, `services/simulation-api.service.ts`, `models/direction.ts`, `models/robot.model.ts`
