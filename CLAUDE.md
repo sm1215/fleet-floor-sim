@@ -68,7 +68,7 @@ npm workspaces (`apps/*`), run from the repo root. Status says which exist so fa
 | `npm run db:migrate` | Run pending migrations | Exists |
 | `npm run db:migrate:generate -- database/migrations/<name>` | Generate a migration from entity changes | Exists |
 | `npm run db:migrate:revert` | Revert the last migration | Exists |
-| `npm run scenario -- path/to/scenario.txt` | Run a scenario file | To be created |
+| `npm run scenario -- path/to/scenario.txt` | Run a scenario file (builds the API first) | Exists |
 
 API-only: `npm run test:e2e -w apps/api` runs the e2e tests (`apps/api/test/`).
 
@@ -76,7 +76,8 @@ API-only: `npm run test:e2e -w apps/api` runs the e2e tests (`apps/api/test/`).
 - Standalone script in `apps/api/`, separate from the dev server.
 - Loads a **plain-text** scenario file given as a CLI argument: `npm run scenario -- path/to/scenario.txt`.
 - Runs the scenario against the Engine directly.
-- Scenario file format: to be defined.
+- Builds into `apps/api/dist-scenario/` first (own tsconfig, so `dist/` is never wiped), then runs `dist-scenario/src/scenario/main.js`. Use `npm run -s scenario -- …` to keep npm's banner lines off stdout.
+- Scenario file format and behavior: see `.claude/rules/scenario-runner.md`. Examples in `scenarios/`, expected REPORT output in `scenarios/expected/`.
 
 ## Folder structure
 ```
@@ -118,3 +119,5 @@ Path-scoped rules in `.claude/rules/` load when working on matching files:
 - `robot-rules.md` — `apps/web/src/app/app.*`, `components/robot/**`, `components/grid/**`, `components/cell/**`, `components/queue-panel/**`, `services/simulation-api.service.ts`, `models/direction.ts`, `models/robot.model.ts`
 - `engine.md` — `apps/api/src/engine/**`
 - `queue.md` — `apps/api/src/queue/**`
+- `scenario-runner.md` — `apps/api/src/scenario/**`, `scenarios/**`
+- `log-entry.md` — `apps/api/**`, `apps/web/src/app/components/log-modal/**`, `apps/web/src/app/app.*`, `services/simulation-api.service.ts`

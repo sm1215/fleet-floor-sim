@@ -14,6 +14,15 @@ paths:
 - `currentTick`: number, starts at `0`, increments by `1`.
 - `tickRate`: number in milliseconds, defaults to `1000`.
 - `running`: boolean.
+- `scenarioMode`: boolean, defaults to `false`. The scenario runner sets it to `true`.
+
+## Commands
+
+- The Engine owns every command in `commands.md`: `floor(width, height)`, `obstacle(x, y)`, `place(displayId, x, y, direction)`, `queue(displayId, commands)`, `tick(amount)`, and `report()`.
+- LEFT / RIGHT / MOVE are enqueued through `queue()`. Nothing is applied until a tick.
+- Both callers use these methods: the `POST /commands/*` routes (after DTO validation) and the scenario runner (`scenario-runner.md`).
+- Invalid input never throws. The method returns a result saying it was ignored and why (see Ignored requests in `commands.md`).
+- No HTTP concerns inside the Engine.
 
 ## step()
 
@@ -21,6 +30,7 @@ paths:
 - `step()` calls `doNext()` on `QueueService` (`apps/api/src/queue`), awaits the returned array and every promise in it, and executes the commands they resolve to (see `queue.md` and `commands.md`).
 - `step()` waits until all promises resolve.
 - Commands are applied in-process by `EngineCommandsService` (not over HTTP, and not the `POST /commands/*` routes, which enqueue): `left(robotId)` and `right(robotId)` per robot, then one `moveAll(robotIds)` with every `MOVE` of the tick so moves resolve together. The MOVE rules live in the pure `resolveMoves()` (`resolve-moves.ts`).
+- After the commands are applied, `step()` writes a `TICK` log entry in-process via `LogEntryService`, unless `scenarioMode` is `true` (see `log-entry.md`).
 - `moveAll()` returns the block reasons; where they are reported is not decided yet.
 - If an error occurs, report it back to the frontend, where it is displayed under the grid.
 

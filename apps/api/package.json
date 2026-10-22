@@ -8,6 +8,7 @@
   "type": "module",
   "scripts": {
     "build": "nest build",
+    "scenario": "nest build -p tsconfig.scenario.json && node dist-scenario/src/scenario/main.js",
     "deploy": "nest deploy",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"database/**/*.ts\"",
     "start": "nest start",

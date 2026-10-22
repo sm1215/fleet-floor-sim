@@ -13,3 +13,6 @@ export interface Position {
 
 export const COMMANDS = ['MOVE', 'LEFT', 'RIGHT'] as const;
 export type Command = (typeof COMMANDS)[number];
+
+/** Uppercase direction names; the index is the `Direction` value. */
+export const DIRECTION_NAMES = ['NORTH', 'EAST', 'SOUTH', 'WEST'] as const;

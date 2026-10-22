@@ -13,13 +13,11 @@ import {
   Robot,
 } from '../../database/entities/index.js';
 import { EngineService } from '../engine/engine.service.js';
+import { WriteLock } from '../shared/write-lock.js';
 import { CreateFloorDto } from './dto/create-floor.dto.js';
 import { UpdateFloorDto } from './dto/update-floor.dto.js';
-import {
-  DEFAULT_FLOOR_SIZE,
-  planResize,
-  RESIZE_NO_ROOM,
-} from './floor.model.js';
+import { insertOpenCells, resizeFloor } from './floor-writes.js';
+import { DEFAULT_FLOOR_SIZE, RESIZE_NO_ROOM } from './floor.model.js';
 
 @Injectable()
 export class FloorService {
@@ -27,12 +25,13 @@ export class FloorService {
     @InjectRepository(Floor) private readonly repo: Repository<Floor>,
     private readonly dataSource: DataSource,
     private readonly engine: EngineService,
+    private readonly lock: WriteLock,
   ) {}
 
   create(dto: CreateFloorDto): Promise<Floor> {
     return this.dataSource.transaction(async (manager) => {
       const floor = await manager.getRepository(Floor).save(dto);
-      await this.insertOpenCells(manager, floor);
+      await insertOpenCells(manager, floor);
       return floor;
     });
   }
@@ -44,8 +43,9 @@ export class FloorService {
    */
   async reset(id: number): Promise<Floor> {
     await this.findOne(id);
+    // Taken after engine.reset(): that waits for an in-flight tick, which needs the lock.
     await this.engine.reset();
-    await this.dataSource.transaction(async (manager) => {
+    await this.write(async (manager) => {
       const robotRepo = manager.getRepository(Robot);
       const robotIds = (
         await robotRepo.find({
@@ -66,22 +66,14 @@ export class FloorService {
         width: DEFAULT_FLOOR_SIZE,
         height: DEFAULT_FLOOR_SIZE,
       });
-      await this.insertOpenCells(manager, floor);
+      await insertOpenCells(manager, floor);
     });
     return this.findOne(id);
   }
 
-  private async insertOpenCells(
-    manager: EntityManager,
-    floor: Floor,
-  ): Promise<void> {
-    const rows: Partial<Cell>[] = [];
-    for (let y = 0; y < floor.height; y++) {
-      for (let x = 0; x < floor.width; x++) {
-        rows.push({ obstacle: false, xPosition: x, yPosition: y, floor });
-      }
-    }
-    await manager.getRepository(Cell).insert(rows);
+  /** One transaction, run under the write lock so it never interleaves with a tick. */
+  private write<T>(work: (manager: EntityManager) => Promise<T>): Promise<T> {
+    return this.lock.run(() => this.dataSource.transaction(work));
   }
 
   findAll(): Promise<Floor[]> {
@@ -100,42 +92,9 @@ export class FloorService {
       width: dto.width ?? floor.width,
       height: dto.height ?? floor.height,
     };
-    await this.dataSource.transaction(async (manager) => {
-      const cellRepo = manager.getRepository(Cell);
-      const robotRepo = manager.getRepository(Robot);
-      const cells = await cellRepo.findBy({ floor: { id } });
-      const robots = await robotRepo.find({
-        where: { cell: { floor: { id } } },
-        relations: { cell: true },
-      });
-      const plan = planResize(
-        size,
-        cells,
-        robots.map((r) => ({ id: r.id, cellId: r.cell.id })),
-      );
-      if (!plan) throw new ConflictException(RESIZE_NO_ROOM);
-
-      await manager.getRepository(Floor).save({ id, ...size });
-      if (plan.create.length > 0) {
-        await cellRepo.insert(
-          plan.create.map(({ x, y }) => ({
-            obstacle: false,
-            xPosition: x,
-            yPosition: y,
-            floor: { id },
-          })),
-        );
-      }
-      for (const { robotId, to } of plan.moves) {
-        const target = await cellRepo.findOneByOrFail({
-          floor: { id },
-          xPosition: to.x,
-          yPosition: to.y,
-        });
-        await robotRepo.update(robotId, { cell: { id: target.id } });
-      }
-      if (plan.deleteCellIds.length > 0) {
-        await cellRepo.delete({ id: In(plan.deleteCellIds) });
+    await this.write(async (manager) => {
+      if (!(await resizeFloor(manager, id, size))) {
+        throw new ConflictException(RESIZE_NO_ROOM);
       }
     });
     return this.findOne(id);

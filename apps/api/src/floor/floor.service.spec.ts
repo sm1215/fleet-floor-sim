@@ -12,6 +12,7 @@ import {
 } from '../../database/entities/index.js';
 import { sqliteTestDb } from '../../test/sqlite-test-db.js';
 import { EngineService } from '../engine/engine.service.js';
+import { WriteLock } from '../shared/write-lock.js';
 import { UpdateFloorDto } from './dto/update-floor.dto.js';
 import { RESIZE_NO_ROOM } from './floor.model.js';
 import { FloorModule } from './floor.module.js';
@@ -279,6 +280,45 @@ describe('FloorService', () => {
     await expect(service.remove(9)).rejects.toThrow(NotFoundException);
   });
 
+  /** Holds the write lock until the returned release() is called. */
+  function holdLock() {
+    let release!: () => void;
+    const held = moduleRef
+      .get(WriteLock)
+      .run(() => new Promise<void>((r) => (release = r)));
+    return { held, release: () => release() };
+  }
+
+  const settle = () => new Promise((r) => setTimeout(r, 20));
+
+  it('update waits for the write lock', async () => {
+    const floor = await service.create({ width: 5, height: 5 });
+    const lock = holdLock();
+    const updating = service.update(floor.id, { width: 3 });
+    await settle();
+    expect(await cellsOf(floor.id)).toHaveLength(25);
+    lock.release();
+    await lock.held;
+    await expect(updating).resolves.toMatchObject({ width: 3 });
+    expect(await cellsOf(floor.id)).toHaveLength(15);
+  });
+
+  it('a 409 resize releases the write lock', async () => {
+    const floor = await service.create({ width: 1, height: 2 });
+    await robots.save({
+      displayId: 1,
+      direction: 0,
+      cell: await cellAt(floor.id, 0, 1),
+    });
+    await markObstacle(floor.id, 0, 0);
+    await expect(service.update(floor.id, { height: 1 })).rejects.toThrow(
+      ConflictException,
+    );
+    await expect(
+      moduleRef.get(WriteLock).run(() => Promise.resolve('free')),
+    ).resolves.toBe('free');
+  });
+
   describe('reset', () => {
     it('returns a 5×5 floor with 25 Open cells', async () => {
       const floor = await service.create({ width: 8, height: 6 });
@@ -341,6 +381,18 @@ describe('FloorService', () => {
         running: false,
         currentTick: 0,
       });
+    });
+
+    it('waits for the write lock', async () => {
+      const floor = await service.create({ width: 8, height: 6 });
+      const lock = holdLock();
+      const resetting = service.reset(floor.id);
+      await settle();
+      expect(await cellsOf(floor.id)).toHaveLength(48);
+      lock.release();
+      await lock.held;
+      await expect(resetting).resolves.toMatchObject({ width: 5, height: 5 });
+      expect(await cellsOf(floor.id)).toHaveLength(25);
     });
 
     it('throws 404 for a missing floor', async () => {

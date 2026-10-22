@@ -6,6 +6,8 @@ import type { NextCommand } from '../queue/next-command.js';
 import type { QueueService } from '../queue/queue.service.js';
 import type { Robot } from '../../database/entities/index.js';
 import type { Command } from '../shared/types.js';
+import { WriteLock } from '../shared/write-lock.js';
+import type { DirectCommandsService } from './direct-commands.service.js';
 import type { EngineCommandsService } from './engine-commands.service.js';
 import { EngineService, STEP_WHILE_RUNNING } from './engine.service.js';
 
@@ -14,7 +16,12 @@ type Results = Promise<NextCommand | null>[];
 describe('EngineService', () => {
   let doNext: ReturnType<typeof vi.fn<() => Promise<Results>>>;
   let service: EngineService;
+  let lock: WriteLock;
   let commands: Record<'left' | 'right' | 'moveAll', ReturnType<typeof vi.fn>>;
+  let direct: Record<
+    'floor' | 'obstacle' | 'place' | 'queue' | 'report' | 'clear',
+    ReturnType<typeof vi.fn>
+  >;
 
   /** A doNext() result whose single per-robot promise settles on demand. */
   function pendingResult() {
@@ -31,9 +38,20 @@ describe('EngineService', () => {
       right: vi.fn().mockResolvedValue(undefined),
       moveAll: vi.fn().mockResolvedValue([]),
     };
+    direct = {
+      floor: vi.fn().mockResolvedValue({ ok: true }),
+      obstacle: vi.fn().mockResolvedValue({ ok: true }),
+      place: vi.fn().mockResolvedValue({ ok: true }),
+      queue: vi.fn().mockResolvedValue({ ok: true }),
+      report: vi.fn().mockResolvedValue(['EMPTY']),
+      clear: vi.fn().mockResolvedValue(undefined),
+    };
+    lock = new WriteLock();
     service = new EngineService(
       { doNext } as unknown as QueueService,
       commands as unknown as EngineCommandsService,
+      direct as unknown as DirectCommandsService,
+      lock,
     );
   });
 
@@ -238,6 +256,78 @@ describe('EngineService', () => {
       await expect(service.step()).rejects.toThrow(
         InternalServerErrorException,
       );
+    });
+  });
+
+  describe('direct commands', () => {
+    it('tick(3) steps three times', async () => {
+      await expect(service.tick(3)).resolves.toEqual({ ok: true });
+      expect(service.currentTick).toBe(3);
+      expect(doNext).toHaveBeenCalledTimes(3);
+    });
+
+    it('tick ignores 0 and 1.5', async () => {
+      expect((await service.tick(0)).ok).toBe(false);
+      expect((await service.tick(1.5)).ok).toBe(false);
+      expect(service.currentTick).toBe(0);
+      expect(doNext).not.toHaveBeenCalled();
+    });
+
+    it('tick accepts up to 99 and ignores 100', async () => {
+      expect((await service.tick(100)).ok).toBe(false);
+      expect(doNext).not.toHaveBeenCalled();
+      await expect(service.tick(99)).resolves.toEqual({ ok: true });
+      expect(service.currentTick).toBe(99);
+    });
+
+    it('a failing tick returns the error instead of throwing, and stops', async () => {
+      doNext.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('boom'));
+      await expect(service.tick(5)).resolves.toEqual({
+        ok: false,
+        reason: 'boom',
+      });
+      expect(doNext).toHaveBeenCalledTimes(2);
+    });
+
+    it('step waits for the write lock', async () => {
+      let release!: () => void;
+      const held = lock.run(() => new Promise<void>((r) => (release = r)));
+      const stepping = service.step();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(doNext).not.toHaveBeenCalled();
+      release();
+      await held;
+      await stepping;
+      expect(doNext).toHaveBeenCalledTimes(1);
+    });
+
+    it('tick while running is ignored', async () => {
+      service.toggle();
+      await expect(service.tick(2)).resolves.toEqual({
+        ok: false,
+        reason: STEP_WHILE_RUNNING,
+      });
+      expect(doNext).not.toHaveBeenCalled();
+      expect(service.currentTick).toBe(0);
+    });
+
+    it('delegates floor/obstacle/place/queue/report/clear to DirectCommandsService', async () => {
+      await expect(service.floor(4, 3)).resolves.toEqual({ ok: true });
+      expect(direct.floor).toHaveBeenCalledWith(4, 3);
+      await service.obstacle(2, 3);
+      expect(direct.obstacle).toHaveBeenCalledWith(2, 3);
+      await service.place(1, 0, 0, 1);
+      expect(direct.place).toHaveBeenCalledWith(1, 0, 0, 1);
+      await service.queue(1, ['MOVE', 'LEFT']);
+      expect(direct.queue).toHaveBeenCalledWith(1, ['MOVE', 'LEFT']);
+      await expect(service.report()).resolves.toEqual(['EMPTY']);
+      expect(direct.report).toHaveBeenCalled();
+      await service.clear();
+      expect(direct.clear).toHaveBeenCalled();
+    });
+
+    it('scenarioMode defaults to false', () => {
+      expect(service.scenarioMode).toBe(false);
     });
   });
 });

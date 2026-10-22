@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+dist-scenario/
 out-tsc/
 build/
 *.tsbuildinfo

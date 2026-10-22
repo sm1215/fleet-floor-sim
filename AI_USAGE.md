@@ -105,3 +105,27 @@ User clarified: Reset All must stop Play and the button must revert to Play. Use
 User asked to center the robot movement controls at the bottom. User chose: centered in the layout's last row (not fixed to viewport). Wide layout: controls area now spans both columns (`controls controls`); buttons centered with justify-center. Narrow layout unchanged apart from centering. Not committed.
 
 Implemented Reset All (native). API: EngineService.reset() (async, waits for an in-flight tick), FloorService.reset + POST /floors/:id/reset. Web: resetFloor(), Grid.resetFloor() (drops in-flight resize), App onResetAll with confirm, re-reads engine on success/failure. Review fixed 2 races. Updated frontend.md. Lint ok; API 150 / e2e 18 / web 160 pass; build ok. Not committed.
+
+User asked: center top buttons and W/H sliders, sliders row spans full width, align queue with grid, move Queue label below box in black. User chose label below the bordered box. Grid host now display: contents so its slider row ([grid-area:sliders]) spans both columns and the floor sits in grid area; Grid still owns sliders. Queue panel host flex-col, h2 after box, text-black. Lint/format ok; web 160 pass. Not committed.
+
+User asked to right-align the Queue label. Added text-right to the queue panel h2. Not committed.
+
+User asked for a plan to add a log-entry rules file from log-entry-plan.md. Decisions: GET /log-entries returns all entries (no floor FK); interactions logged in controllers; Engine calls a new tick-log endpoint after each step; also log robot delete + FLOOR; report format unified in log-entry.md. Saved .claude/plans/log-entry-rules-plan.md. Open: entry string format, logging ignored requests, tick route.
+
+User revised the log-entry rules plan: Engine logs tick results directly via LogEntryService (no HTTP, no tick endpoint). Accepted entry layout (action=command name, params as text, result=OK or report lines) and not logging ignored requests. Plan updated.
+
+User asked for a scenario-mode flag that skips logging. Plan adds Engine scenarioMode boolean (default false); scenario runner sets it true; Engine skips tick logging when true. engine.md step updated in plan.
+
+User approved the plan. Created .claude/rules/log-entry.md (when to log, entry layout, tick logging, scenarioMode skip, report format, GET /log-entries, Log modal and X button, tests). commands.md REPORT now points to log-entry.md report format; engine.md adds scenarioMode and TICK logging; CLAUDE.md rules list updated. Not committed.
+
+User asked for a scenario-runner rules file from scenario-runner-plan.md. Decisions: Engine owns all commands (routes validate + call it, robot routes only enqueue); Nest app context; in-memory SQLite, fresh 5x5 floor; case-insensitive; `PLACE R1 0,0,EAST` syntax; multi-command QUEUE everywhere; ignored lines silent; bare names resolve to scenarios/; report format now `R1 1,0,EAST`; tests diff stdout vs scenarios/expected. Updated engine/commands/log-entry rules, CLAUDE.md.
+
+User asked for a scenario runner implementation plan. Plan: Engine gains floor/obstacle/place/queue/tick/report/clear via new DirectCommandsService (FloorService resize logic extracted to floor-writes.ts); pure parseLine; runScenario; Nest app context on :memory: with logger off; CLI runs from nest build output (tsx lacks decorator metadata); INIT_CWD path resolution; e2e checks scenarios vs expected. HTTP routes and tick logging out of scope. Saved .claude/plans/scenario-runner-impl-plan.md.
+
+User asked to execute scenario-runner-impl-plan.md. Done inline on main, not committed. Added report formatter, DirectCommandsService (floor/obstacle/place/queue/report/clear), EngineService.tick + delegates + scenarioMode, floor-writes.ts, parseLine, runScenario, scenario context, path resolver, CLI main.ts, scenario npm scripts. Rulings: renamed EngineService private `queue` field to `queueService` (shadowed queue()); added MAX_FLOOR_SIZE. All 5 scenarios match expected.
+
+User asked to fix review findings, no commit. Added WriteLock serializing ticks, direct commands and CellService obstacle toggle (robot can no longer end on an Obstacle); tick() returns errors, max 99; runner start floor caught; place validates direction 0..3; queue lookup in txn, FK race returns ignored; scenario build moved to dist-scenario (tsconfig.scenario.json, .gitignore, eslint ignore); CLI e2e tests; no log entries in scenario mode.
+
+User asked to add the write lock to FloorService resize and reset. update() transaction now runs under WriteLock; reset() takes the lock after engine.reset() (which waits for an in-flight tick that itself needs the lock, so locking first would deadlock). Tests: update/reset wait for the lock; a 409 resize releases it. Not committed.
+
+User asked to run all 5 scenarios via npm run scenario, one subagent each, sequentially, and compare to scenarios/expected. All 5 match on content. Only byte differences: expected files use CRLF with no final newline; stdout uses LF with a trailing newline. No files changed.

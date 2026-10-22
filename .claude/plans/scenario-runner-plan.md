@@ -1,0 +1,18 @@
+## scenario runner plan
+- Add a path scoped rules file that dictates the following behavior for a scenario runner CLI tool.
+- The scenario-runner should live outside NestJS as a standalone utility CLI.
+- It should interact with the engine directly and no other part.
+- It should be able to pass a file, communicate with the engine and receive results from the engine.
+- It should be invoked using `npm run scenario -- path/to/scenario.txt`
+- It should accept a plain text file and parse it.
+- It should look for command keywords as defined in `.claude/rules/commands.md`
+- Everything should match commands.md, including the expected params
+- It should be parsed as every new line starting a single new command
+- The commands are case-insensitive
+- blank lines are ignored
+- lines that start with # should be ignore entirely, proceed to the next line, and continue.
+- Invalid lines, params, or missing params should just be ignored. Do not throw an error, continue processing.
+- Any REPORT command should pipe to stdout
+- The /scenarios directory at the root level is the default location to find scenarios.
+- When loading a scenario, the scenario should always create a new and separate floor from any existing data.
+- When the scenario completes, the floor and anything it contains should be removed.

@@ -13,6 +13,7 @@
     "format": "npm run format --workspaces",
     "db:migrate": "npm run db:migrate -w apps/api",
     "db:migrate:generate": "npm run db:migrate:generate -w apps/api --",
-    "db:migrate:revert": "npm run db:migrate:revert -w apps/api"
+    "db:migrate:revert": "npm run db:migrate:revert -w apps/api",
+    "scenario": "npm run scenario -w apps/api --"
   }
 }

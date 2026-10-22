@@ -13,7 +13,7 @@ paths:
 
 ## Endpoints
 
-One `POST /commands/<name>` route per command. Params come in the body and are validated by a DTO.
+One `POST /commands/<name>` route per command. Params come in the body and are validated by a DTO. Then the route calls the matching Engine method (`engine.md`). All command logic lives in the Engine. Robot command routes (LEFT / RIGHT / MOVE / QUEUE) only enqueue.
 
 | Command  | Route                     | Params                                          |
 | -------- | ------------------------- | ----------------------------------------------- |
@@ -23,7 +23,7 @@ One `POST /commands/<name>` route per command. Params come in the body and are v
 | FLOOR    | `POST /commands/floor`    | `width` (int, default 5), `height` (int, default 5) |
 | OBSTACLE | `POST /commands/obstacle` | `x` (int, required), `y` (int, required)        |
 | PLACE    | `POST /commands/place`    | `rId`, `x` (int), `y` (int), `direction`        |
-| QUEUE    | `POST /commands/queue`    | `rId`, `command` (`LEFT` / `RIGHT` / `MOVE`)    |
+| QUEUE    | `POST /commands/queue`    | `rId`, `commands` (one or more of `LEFT` / `RIGHT` / `MOVE`) |
 | TICK     | `POST /commands/tick`     | `amount` (int, default 1)                       |
 | REPORT   | `POST /commands/report`   | none                                            |
 
@@ -32,7 +32,7 @@ One `POST /commands/<name>` route per command. Params come in the body and are v
 - Missing or invalid params, an unknown robot, or no matching cell → the request is ignored and nothing changes.
 - Never throw in a way that stops the program. The service/Engine returns a descriptive result saying what was ignored and why.
 - Over HTTP: 400 with that descriptive message.
-- Scenario runner: log the message and continue with the next line.
+- Scenario runner: skip the line silently and continue with the next line (see `scenario-runner.md`).
 
 ## LEFT / RIGHT / MOVE
 
@@ -40,9 +40,9 @@ One `POST /commands/<name>` route per command. Params come in the body and are v
 
 ## QUEUE
 
-- Requires `rId` and `command`. `command` must be exactly `LEFT`, `RIGHT`, or `MOVE` (uppercase).
-- Enqueues the command on the robot's FIFO queue.
-- Missing or invalid params → ignored.
+- Requires `rId` and `commands`: one or more commands, each exactly `LEFT`, `RIGHT`, or `MOVE` (uppercase).
+- Enqueues the commands, in order, on the robot's FIFO queue.
+- Missing or invalid params, or any invalid command → the whole request is ignored and nothing is enqueued.
 
 ## Tick execution
 
@@ -95,10 +95,7 @@ A `MOVE` targets the cell one step forward in the robot's direction (N = +y, E =
 
 ## REPORT
 
-- Query every robot, sorted by ascending `displayId`.
-- Print one line per robot to stdout: `${RId} ${X}, ${Y}, ${Direction}`
-  - `RId` = `R${displayId}`. X/Y come from the robot's cell. Direction is the English name from `direction.ts` (e.g. `North`).
-- No robots → print `EMPTY`.
+- Print the robot report to stdout, using the shared formatter. The format is defined once, under Report format in `log-entry.md`.
 
 ## Testing
 
@@ -121,9 +118,9 @@ Service / DTO specs:
 
 - `RId` parsing: `R3` → 3. `r3`, `3`, `R`, `Rx` → ignored with a descriptive message.
 - Each endpoint's ignored cases → 400 with a descriptive message, nothing changed.
-- LEFT / RIGHT / MOVE / QUEUE enqueue the right command. QUEUE rejects lowercase and unknown commands.
+- LEFT / RIGHT / MOVE / QUEUE enqueue the right command. QUEUE enqueues multiple commands in order; it rejects the whole request if any command is lowercase or unknown.
 - FLOOR: defaults to 5×5; creates when missing; updates when present.
 - OBSTACLE: sets `obstacle = true`; missing x/y or no cell → ignored.
 - PLACE: creates a new robot; updates the cell and direction of an existing `displayId`; accepts only uppercase direction names.
 - TICK: defaults to 1; calls `step()` `amount` times.
-- REPORT: lines sorted by `displayId` in the exact format; `EMPTY` when there are no robots.
+- REPORT: prints the shared report (format tests live in `log-entry.md`).

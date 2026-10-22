@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Cell, Robot } from '../../database/entities/index.js';
+import { WriteLock } from '../shared/write-lock.js';
 import { CellService } from './cell.service.js';
 
 describe('CellService', () => {
@@ -11,6 +12,7 @@ describe('CellService', () => {
   let repo: Record<string, ReturnType<typeof vi.fn>>;
   let robotRepo: Record<string, ReturnType<typeof vi.fn>>;
   let service: CellService;
+  let lock: WriteLock;
 
   beforeEach(async () => {
     repo = {
@@ -24,6 +26,7 @@ describe('CellService', () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
         CellService,
+        { provide: WriteLock, useFactory: () => (lock = new WriteLock()) },
         { provide: getRepositoryToken(Cell), useValue: repo },
         { provide: getRepositoryToken(Robot), useValue: robotRepo },
       ],
@@ -86,5 +89,17 @@ describe('CellService', () => {
   it('removes a row', async () => {
     await service.remove(1);
     expect(repo.remove).toHaveBeenCalledWith(row);
+  });
+
+  it('update waits for the write lock', async () => {
+    let release!: () => void;
+    const held = lock.run(() => new Promise<void>((r) => (release = r)));
+    const updating = service.update(1, { obstacle: true });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(repo.save).not.toHaveBeenCalled();
+    release();
+    await held;
+    await updating;
+    expect(repo.save).toHaveBeenCalled();
   });
 });

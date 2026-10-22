@@ -85,3 +85,6 @@ export function planResize(
 
 /** Width and height of a new or reset floor. */
 export const DEFAULT_FLOOR_SIZE = 5;
+
+/** Largest floor width or height. */
+export const MAX_FLOOR_SIZE = 20;
