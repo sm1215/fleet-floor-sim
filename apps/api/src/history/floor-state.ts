@@ -1,4 +1,4 @@
-import type { Command, Direction } from '../shared/types.js';
+import type { Direction } from '../shared/types.js';
 
 /**
  * A floor and everything on it at one tick (timeline.md). Stored as JSON in
@@ -16,6 +16,12 @@ export interface FloorState {
     x: number;
     y: number;
     direction: Direction;
-    queue: Command[];
+    /** Each command, plus ` params` when it has them: `MOVE`, `GOTO 3,4`. */
+    queue: string[];
+    /**
+     * Replay only: set by UNREACHABLE, so the TICK after it pops the GOTO
+     * head. Cleared by that TICK; never stored.
+     */
+    gaveUp?: true;
   }[];
 }

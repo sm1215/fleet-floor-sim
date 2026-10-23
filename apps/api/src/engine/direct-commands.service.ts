@@ -11,6 +11,7 @@ import {
 import {
   deleteParams,
   floorParams,
+  gotoParams,
   type LogAction,
   obstacleParams,
   placeParams,
@@ -18,7 +19,12 @@ import {
 } from '../log-entry/log-params.js';
 import { insertOpenCells, resizeFloor } from '../floor/floor-writes.js';
 import { MAX_FLOOR_SIZE, RESIZE_NO_ROOM } from '../floor/floor.model.js';
-import { COMMANDS, type Command, type Direction } from '../shared/types.js';
+import {
+  COMMANDS,
+  type Command,
+  type Direction,
+  GOTO,
+} from '../shared/types.js';
 import { WriteLock } from '../shared/write-lock.js';
 import type { CommandResult, Recorder } from './command-result.js';
 import { formatReport } from './report.js';
@@ -43,7 +49,7 @@ const isForeignKeyViolation = (error: unknown) =>
     'SQLITE_CONSTRAINT_FOREIGNKEY';
 
 /**
- * FLOOR / OBSTACLE / PLACE / QUEUE / DELETE / REPORT on the given floor
+ * FLOOR / OBSTACLE / PLACE / QUEUE / GOTO / DELETE / REPORT on the given floor
  * (commands.md, timeline.md); a null floor has no cells or robots. Each
  * success carries its log line (log-entry.md), passed to the optional
  * recorder inside the same transaction.
@@ -167,6 +173,39 @@ export class DirectCommandsService {
           await repo.insert({ command, params: null, robot: { id: robot.id } });
         }
         return ok(floorId, 'QUEUE', queueParams(displayId, commands));
+      });
+    } catch (error) {
+      // The robot was deleted outside the lock (e.g. over HTTP) meanwhile.
+      if (isForeignKeyViolation(error)) return notFound;
+      throw error;
+    }
+  }
+
+  /**
+   * Enqueues GOTO with params `x,y` (pathfinding.md). The target only has to
+   * exist: an Obstacle or occupied target is still enqueued.
+   */
+  async goto(
+    floorId: number | null,
+    displayId: number,
+    x: number,
+    y: number,
+    record?: Recorder,
+  ): Promise<CommandResult> {
+    const notFound = ignored(`Robot R${displayId} not found`);
+    try {
+      return await this.command(record, async (manager) => {
+        const robot = await this.robotById(manager, floorId, displayId);
+        if (!robot || floorId === null) return notFound;
+        if (!(await this.cellAt(manager, floorId, x, y))) {
+          return ignored(`No cell at ${x},${y}`);
+        }
+        await manager.getRepository(QueuedCommand).insert({
+          command: GOTO,
+          params: `${x},${y}`,
+          robot: { id: robot.id },
+        });
+        return ok(floorId, 'QUEUE', gotoParams(displayId, x, y));
       });
     } catch (error) {
       // The robot was deleted outside the lock (e.g. over HTTP) meanwhile.

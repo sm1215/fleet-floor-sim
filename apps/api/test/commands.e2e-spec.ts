@@ -78,6 +78,25 @@ describe('Commands (e2e)', () => {
     expect(await log()).toHaveLength(2);
   });
 
+  it('POST /commands/goto enqueues and logs; invalid body → 400', async () => {
+    await http().post('/commands/floor').send({}).expect(200);
+    await http()
+      .post('/commands/place')
+      .send({ x: 0, y: 0, direction: 'NORTH' })
+      .expect(200);
+    await http()
+      .post('/commands/goto')
+      .send({ rId: 'R1', x: 2, y: 2 })
+      .expect(200, { ok: true });
+    await http().post('/commands/goto').send({ rId: 'R1', y: 2 }).expect(400);
+    await http()
+      .post('/commands/goto')
+      .send({ rId: 'r1', x: 2, y: 2 })
+      .expect(400);
+    expect((await log()).at(-1)).toEqual(['QUEUE', 'R1 GOTO 2,2', 'OK']);
+    expect(await log()).toHaveLength(3);
+  });
+
   it('an invalid rId → 400', async () => {
     await http().post('/commands/delete').send({ rId: 'r1' }).expect(400);
   });

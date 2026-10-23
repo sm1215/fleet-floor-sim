@@ -157,3 +157,7 @@ User asked for a subagent code review, then to fix both Important findings and M
 User asked for the queue panel title fix with no testing. The panel now shows the selected robot's R<displayId> (looked up through the grid) instead of its database id; App.grid became protected so the template can reach it. Not tested, per the user. Not committed.
 
 - Re-ran tests after the queue-title change: API unit 262, API e2e 70, web 220 all pass. Lint failed only on the long app.html line; Prettier reformatted it and lint now passes. Not committed.
+
+User asked to execute pathfinding-impl-plan.md. Plan missed the timeline; user chose full support: FloorState queues keep params (GOTO 3,4), fork keeps them, replay keeps a GOTO head until arrival or UNREACHABLE. Rulings: no-path counter per floor; UNREACHABLE logged with the new tick; FORWARD moved to shared/types. Built GOTO (BFS module, queue, engine, POST /commands/goto, Shift+Click, hint). api 306, e2e 71, web 232, lint/build pass. Manual UI check not run. Not committed.
+
+User asked to fix the review's Minor and two of my noted minors. Hint now shows only with a robot selected, Edit off and the live tick. Shift+mousedown on a cell is preventDefaulted so Shift+Click doesn't select text. GOTO planning reads the floor once per tick via gotoSteps(), only when the tick has GOTOs. Tests first; api 307, e2e 71, web 235, lint/build/scenarios pass. Rules updated. Not committed.

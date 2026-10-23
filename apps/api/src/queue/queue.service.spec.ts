@@ -165,4 +165,50 @@ describe('QueueService.doNext()', () => {
     ]);
     expect(await queueOf(theirs.id)).toEqual(['LEFT']);
   });
+  describe('GOTO', () => {
+    async function addGoto(robotId: number, params: string | null) {
+      return commands.save({ command: 'GOTO', params, robot: { id: robotId } });
+    }
+
+    it('a GOTO head resolves with its target and is not deleted', async () => {
+      const robot = await addRobot(1);
+      const goto = await addGoto(robot.id, '3,4');
+      const expected = {
+        robot: expect.objectContaining({ id: robot.id }) as unknown,
+        command: 'GOTO',
+        queuedCommandId: goto.id,
+        target: { x: 3, y: 4 },
+      };
+      await expect(run()).resolves.toEqual([expected]);
+      expect(await commands.existsBy({ id: goto.id })).toBe(true);
+      await expect(run()).resolves.toEqual([expected]);
+    });
+
+    it('commands queued behind a GOTO are not returned', async () => {
+      const robot = await addRobot(1);
+      await addGoto(robot.id, '1,0');
+      await commands.save({ command: 'MOVE', params: null, robot });
+      const [result] = await run();
+      expect(result?.command).toBe('GOTO');
+      await expect(queueOf(robot.id)).resolves.toEqual(['GOTO', 'MOVE']);
+    });
+
+    it.each([null, '3', 'a,b'])(
+      'a GOTO with params %s resolves to null and is deleted',
+      async (params) => {
+        const robot = await addRobot(1);
+        await addGoto(robot.id, params);
+        await expect(run()).resolves.toEqual([null]);
+        await expect(commands.count()).resolves.toBe(0);
+      },
+    );
+
+    it('remove(id, manager) deletes that row only', async () => {
+      const robot = await addRobot(1);
+      const goto = await addGoto(robot.id, '1,0');
+      await commands.save({ command: 'MOVE', params: null, robot });
+      await service.remove(goto.id, dataSource.manager);
+      await expect(queueOf(robot.id)).resolves.toEqual(['MOVE']);
+    });
+  });
 });

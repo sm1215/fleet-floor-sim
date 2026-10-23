@@ -6,8 +6,9 @@
   [class.bg-[#e03131]]="cell().obstacle"
   role="button"
   tabindex="0"
-  (click)="clicked.emit()"
-  (keydown.enter)="clicked.emit()"
+  (mousedown)="onMouseDown($event)"
+  (click)="clicked.emit({ shiftKey: $event.shiftKey })"
+  (keydown.enter)="clicked.emit({ shiftKey: $any($event).shiftKey })"
 >
   @if (robot(); as robot) {
     <app-robot [robot]="robot" [selected]="selected()" (clicked)="robotClicked.emit()" />

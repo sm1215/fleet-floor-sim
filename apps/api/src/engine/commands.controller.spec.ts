@@ -6,7 +6,7 @@ import { EngineService } from './engine.service.js';
 describe('CommandsController', () => {
   const ok = { ok: true, log: { action: 'PLACE', params: 'R1 0, 0, NORTH' } };
   let engine: Record<
-    'floor' | 'obstacle' | 'place' | 'queue' | 'delete',
+    'floor' | 'obstacle' | 'place' | 'queue' | 'goto' | 'delete',
     ReturnType<typeof vi.fn>
   >;
   let controller: CommandsController;
@@ -17,6 +17,7 @@ describe('CommandsController', () => {
       obstacle: vi.fn().mockResolvedValue(ok),
       place: vi.fn().mockResolvedValue(ok),
       queue: vi.fn().mockResolvedValue(ok),
+      goto: vi.fn().mockResolvedValue(ok),
       delete: vi.fn().mockResolvedValue(ok),
     };
     const moduleRef = await Test.createTestingModule({
@@ -50,6 +51,13 @@ describe('CommandsController', () => {
   it('queue parses rId and passes the commands', async () => {
     await controller.queue({ rId: 'R12', commands: ['MOVE', 'LEFT'] });
     expect(engine.queue).toHaveBeenCalledWith(12, ['MOVE', 'LEFT']);
+  });
+
+  it('goto parses rId and passes x and y', async () => {
+    await expect(controller.goto({ rId: 'R2', x: 3, y: 4 })).resolves.toEqual({
+      ok: true,
+    });
+    expect(engine.goto).toHaveBeenCalledWith(2, 3, 4);
   });
 
   it('delete parses rId', async () => {

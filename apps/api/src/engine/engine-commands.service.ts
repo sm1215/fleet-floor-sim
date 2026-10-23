@@ -1,10 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager, In } from 'typeorm';
-import { Cell, Robot } from '../../database/entities/index.js';
+import { Cell, Floor, Robot } from '../../database/entities/index.js';
+import { findFirstStep } from '../pathfinding/find-first-step.js';
+import { FORWARD, type Position } from '../shared/types.js';
 import { resolveMoves, type MoveBlock } from './resolve-moves.js';
 
+/** One tick of a GOTO (pathfinding.md). */
+export type GotoStep =
+  { kind: 'ARRIVED' } | { kind: 'NO_PATH' } | { kind: 'MOVE'; next: Position };
+
 /**
- * Applies LEFT / RIGHT / MOVE to the DB during a tick (commands.md, Tick
+ * Applies LEFT / RIGHT / MOVE / GOTO to the DB during a tick (commands.md, Tick
  * execution). Pass the tick's transaction so the whole tick commits together.
  */
 @Injectable()
@@ -19,6 +25,60 @@ export class EngineCommandsService {
   /** Rotates clockwise in place: (d + 1) % 4. */
   async right(robotId: number, manager?: EntityManager): Promise<void> {
     await this.turn(robotId, 1, manager ?? this.dataSource.manager);
+  }
+
+  /**
+   * Plans one tick of every GOTO on the floor, in the order given. Reads the
+   * floor once: walls are Obstacles and every other robot's cell at the start
+   * of the tick. A robot not on its target faces the first step of a shortest
+   * path (a free turn, persisted) and gets the cell it leads to, for `moveAll`.
+   */
+  async gotoSteps(
+    floorId: number,
+    gotos: { robotId: number; target: Position }[],
+    manager: EntityManager,
+  ): Promise<GotoStep[]> {
+    const floor = await manager.findOneByOrFail(Floor, { id: floorId });
+    const cells = await manager.find(Cell, {
+      where: { floor: { id: floorId }, obstacle: true },
+    });
+    const robots = await manager.find(Robot, {
+      where: { cell: { floor: { id: floorId } } },
+      relations: { cell: true },
+    });
+    const key = ({ x, y }: Position) => `${x},${y}`;
+    const obstacles = new Set(
+      cells.map((cell) => key({ x: cell.xPosition, y: cell.yPosition })),
+    );
+    const at = new Map(
+      robots.map((robot) => [
+        robot.id,
+        { x: robot.cell.xPosition, y: robot.cell.yPosition },
+      ]),
+    );
+    const occupied = new Map([...at].map(([id, p]) => [key(p), id]));
+    const steps: GotoStep[] = [];
+    for (const { robotId, target } of gotos) {
+      const start = at.get(robotId)!;
+      if (key(start) === key(target)) {
+        steps.push({ kind: 'ARRIVED' });
+        continue;
+      }
+      const isWall = (p: Position) =>
+        obstacles.has(key(p)) || occupied.has(key(p));
+      const direction = findFirstStep(start, target, floor, isWall);
+      if (direction === null) {
+        steps.push({ kind: 'NO_PATH' });
+        continue;
+      }
+      await manager.update(Robot, robotId, { direction });
+      const step = FORWARD[direction];
+      steps.push({
+        kind: 'MOVE',
+        next: { x: start.x + step.x, y: start.y + step.y },
+      });
+    }
+    return steps;
   }
 
   /** Resolves every MOVE of the tick together and persists the new cells. */

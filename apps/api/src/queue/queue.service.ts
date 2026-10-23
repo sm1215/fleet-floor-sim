@@ -2,13 +2,24 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { QueuedCommand, Robot } from '../../database/entities/index.js';
-import { COMMANDS, type Command } from '../shared/types.js';
+import {
+  COMMANDS,
+  type Command,
+  GOTO,
+  type Position,
+} from '../shared/types.js';
 import type { NextCommand } from './next-command.js';
 
 function parseCommand(value: string): Command | null {
   return (COMMANDS as readonly string[]).includes(value)
     ? (value as Command)
     : null;
+}
+
+/** GOTO params `x,y` (non-negative ints) → the target, else null. */
+export function parseGotoParams(params: string | null): Position | null {
+  const match = params?.match(/^(\d+),(\d+)$/);
+  return match ? { x: Number(match[1]), y: Number(match[2]) } : null;
 }
 
 @Injectable()
@@ -23,7 +34,9 @@ export class QueueService {
    * One promise per robot on the floor, in ascending displayId order. Each takes the
    * robot's head command (deleted whether or not it parses) and resolves to
    * it, or to null when the queue is empty or the command does not parse.
-   * Commands are not executed here. Inside a tick, pass its transaction.
+   * A valid GOTO head is returned but not deleted: it stays at the head until
+   * the Engine removes it. Commands are not executed here. Inside a tick, pass
+   * its transaction.
    */
   async doNext(
     floorId: number,
@@ -46,6 +59,11 @@ export class QueueService {
     });
   }
 
+  /** Deletes one queued command (the Engine removes a finished GOTO). */
+  async remove(queuedCommandId: number, manager: EntityManager): Promise<void> {
+    await manager.getRepository(QueuedCommand).delete(queuedCommandId);
+  }
+
   private async takeNext(
     commands: Repository<QueuedCommand>,
     robot: Robot,
@@ -55,6 +73,12 @@ export class QueueService {
       order: { id: 'ASC' },
     });
     if (!head) return null;
+    if (head.command === GOTO) {
+      const target = parseGotoParams(head.params);
+      if (target) {
+        return { robot, command: GOTO, queuedCommandId: head.id, target };
+      }
+    }
     await commands.delete(head.id);
     const command = parseCommand(head.command);
     return command ? { robot, command } : null;

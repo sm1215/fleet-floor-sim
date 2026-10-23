@@ -525,6 +525,16 @@ describe('Grid', () => {
       expect(placed.querySelector('.robot-arrow')!.textContent!.trim()).toBe('^');
     });
 
+    it('Shift+Click with nothing selected → the normal place, no gotoRequested', async () => {
+      const { fixture, el } = await render(3, 3);
+      const gotos: unknown[] = [];
+      fixture.componentInstance.gotoRequested.subscribe((at) => gotos.push(at));
+      cellAt(el, 2, 1).dispatchEvent(new MouseEvent('click', { shiftKey: true }));
+      await fixture.whenStable();
+      expect(api.placeCommand).toHaveBeenCalledExactlyOnceWith(2, 1, Direction.North);
+      expect(gotos).toEqual([]);
+    });
+
     it('removeRobot(id) → that robot is no longer rendered; others stay', async () => {
       robots = [robot(3, 1, 0, 0), robot(4, 9, 2, 2)];
       const { fixture, el } = await render(3, 3);
@@ -646,6 +656,59 @@ describe('Grid', () => {
         cellAt(el, 2, 1).click();
         await fixture.whenStable();
         expect(api.placeCommand).not.toHaveBeenCalled();
+      });
+
+      describe('Shift+Click', () => {
+        const shiftClick = (el: HTMLElement, x: number, y: number) =>
+          cellAt(el, x, y).dispatchEvent(new MouseEvent('click', { shiftKey: true }));
+
+        async function renderWatched() {
+          const rendered = await renderSelected();
+          const gotos: { x: number; y: number }[] = [];
+          rendered.fixture.componentInstance.gotoRequested.subscribe((at) => gotos.push(at));
+          return { ...rendered, gotos };
+        }
+
+        it('on an empty Open cell → gotoRequested emits x/y; no place request', async () => {
+          const { fixture, el, gotos } = await renderWatched();
+          shiftClick(el, 2, 1);
+          await fixture.whenStable();
+          expect(gotos).toEqual([{ x: 2, y: 1 }]);
+          expect(api.placeCommand).not.toHaveBeenCalled();
+          expect(robotAt(el, 0, 0)).not.toBeNull();
+        });
+
+        it('on an Obstacle cell → no emit, no request', async () => {
+          obstacleIds = [6];
+          const { fixture, el, gotos } = await renderWatched();
+          shiftClick(el, 2, 1);
+          await fixture.whenStable();
+          expect(gotos).toEqual([]);
+          expect(api.placeCommand).not.toHaveBeenCalled();
+        });
+
+        it('on an occupied cell → no emit, no request', async () => {
+          robots = [robot(3, 1, 0, 0, Direction.East), robot(4, 6, 2, 1)];
+          const { fixture, el } = await render(3, 3);
+          fixture.componentRef.setInput('selectedRobotId', 3);
+          await fixture.whenStable();
+          const gotos: unknown[] = [];
+          fixture.componentInstance.gotoRequested.subscribe((at) => gotos.push(at));
+          shiftClick(el, 2, 1);
+          await fixture.whenStable();
+          expect(gotos).toEqual([]);
+          expect(api.placeCommand).not.toHaveBeenCalled();
+        });
+
+        it('in edit mode → the normal obstacle toggle, no emit', async () => {
+          const { fixture, el, gotos } = await renderWatched();
+          fixture.componentRef.setInput('editMode', true);
+          await fixture.whenStable();
+          shiftClick(el, 2, 1);
+          await fixture.whenStable();
+          expect(api.obstacleCommand).toHaveBeenCalledExactlyOnceWith(2, 1);
+          expect(gotos).toEqual([]);
+        });
       });
 
       it('failure → it stays put and the placement error is emitted', async () => {

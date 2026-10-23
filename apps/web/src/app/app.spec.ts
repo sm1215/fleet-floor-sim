@@ -62,6 +62,7 @@ describe('App', () => {
     | 'deleteCommand'
     | 'getQueuedCommands'
     | 'queueCommand'
+    | 'gotoCommand'
     | 'getLogEntries'
     | 'getEngine'
     | 'stepEngine'
@@ -90,6 +91,7 @@ describe('App', () => {
       deleteCommand: vi.fn(() => of(undefined)),
       getQueuedCommands: vi.fn((robotId: number) => of(queues[robotId] ?? [])),
       queueCommand: vi.fn(() => of(undefined)),
+      gotoCommand: vi.fn(() => of(undefined)),
       getLogEntries: vi.fn(() => of([])),
       getEngine: vi.fn(() => of(engineState())),
       stepEngine: vi.fn(() => of(engineState({ currentTick: 1 }))),
@@ -547,6 +549,64 @@ describe('App', () => {
       expect(queueItems(el)).toEqual(['RIGHT']);
     });
 
+    describe('GOTO', () => {
+      const HINT = 'Shift + Click an empty cell to issue a GOTO command';
+      const shiftClick = (el: HTMLElement, x: number, y: number) =>
+        el
+          .querySelector(`app-cell[data-x="${x}"][data-y="${y}"] .cell`)!
+          .dispatchEvent(new MouseEvent('click', { shiftKey: true }));
+      const errorTexts = (el: HTMLElement) =>
+        Array.from(el.querySelectorAll('.area-errors li')).map((li) =>
+          li.textContent!.replace('×', '').trim(),
+        );
+
+      it('Shift+Click → gotoCommand with the selected displayId and x/y; the panel is refetched', async () => {
+        const { fixture, el } = await selected(8);
+        api.getQueuedCommands.mockClear();
+        api.getQueuedCommands.mockReturnValueOnce(
+          of([...queues[8], { id: 100, command: 'GOTO', params: '3,4', robotId: 8 }]),
+        );
+        shiftClick(el, 3, 4);
+        await fixture.whenStable();
+        expect(api.gotoCommand).toHaveBeenCalledExactlyOnceWith(8, 3, 4);
+        expect(api.placeCommand).not.toHaveBeenCalled();
+        expect(api.getQueuedCommands).toHaveBeenCalledExactlyOnceWith(8);
+        expect(queueItems(el)).toEqual(['RIGHT', 'GOTO 3,4']);
+      });
+
+      it('a failed GOTO shows "Command failed to queue." and leaves the panel unchanged', async () => {
+        api.gotoCommand.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 400 })));
+        const { fixture, el } = await selected(7);
+        shiftClick(el, 3, 4);
+        await fixture.whenStable();
+        expect(queueItems(el)).toEqual(['MOVE', 'LEFT']);
+        expect(errorTexts(el)).toEqual(['Command failed to queue.']);
+      });
+
+      it('the hint shows below the movement buttons only while a robot is selected', async () => {
+        const { fixture, el } = await selected();
+        expect(el.textContent).not.toContain(HINT);
+        robotEl(el, 7).click();
+        await fixture.whenStable();
+        const hint = Array.from(el.querySelectorAll('.area-controls p')).find(
+          (p) => p.textContent?.trim() === HINT,
+        )!;
+        expect(hint.classList).toContain('text-sm');
+        const move = buttonNamed(el, 'Move')!;
+        expect(move.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      });
+
+      it('the hint hides in edit mode, where Shift+Click toggles an obstacle', async () => {
+        const { fixture, el } = await selected(7);
+        buttonNamed(el, 'Edit: Off')!.click();
+        await fixture.whenStable();
+        expect(el.textContent).not.toContain(HINT);
+        buttonNamed(el, 'Edit: On')!.click();
+        await fixture.whenStable();
+        expect(el.textContent).toContain(HINT);
+      });
+    });
+
     it('a queue that arrives after switching robots is ignored', async () => {
       const late = new Subject<QueuedCommand[]>();
       api.getQueuedCommands.mockReturnValueOnce(late);
@@ -885,6 +945,16 @@ describe('App', () => {
       input.dispatchEvent(new Event('input'));
       await fixture.whenStable();
     }
+
+    it('the Shift+Click hint hides while a past tick is shown', async () => {
+      const fixture = await setup();
+      const el = fixture.nativeElement as HTMLElement;
+      robotEl(el, 7).click();
+      await fixture.whenStable();
+      expect(el.textContent).toContain('Shift + Click an empty cell to issue a GOTO command');
+      await scrub(fixture, 2);
+      expect(el.textContent).not.toContain('Shift + Click an empty cell to issue a GOTO command');
+    });
 
     async function chooseFloor(fixture: ComponentFixture<App>, id: number) {
       select(fixture.nativeElement).value = String(id);

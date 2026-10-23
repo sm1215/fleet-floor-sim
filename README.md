@@ -77,5 +77,12 @@ npm run scenario -- path/to/scenario.txt
 It will load a plain-text scenario file and run it against the Engine directly (not over HTTP). The scenario file format is still to be defined.
 
 ## Modules Chosen
+> I find Module C to be interesting from a troubleshooting perspective. If anything were to go wrong, a tool with this capability would be helpful to see the events leading up to a problem. It would also be useful from an auditing perspective, as proof that any given robot was at a specific place at said time. 
+
+> I also find Module A to be interesting from an automation perspective. It would be an impactful change to prioritize over other modules because it would have a ripple effect of efficiency across mulitple areas. 
+- It would help eliminate interface fatigue for users and would provide for a better user experience. 
+- It would reduce the amount of work both the frontend and backend would require in terms of communicating invidual interactions.
+- It would also reduce the amount of queueing & logging that occurs and make the queue & log more succint. It would be small, but it would also save on log file sizes.
 
 ## What's Missing
+- UI polish. There's some awkward decisions that got crammed in while adding the modules because they introduce more complexity. I hadn't thought these parts through while doing the initial sketching and planning.

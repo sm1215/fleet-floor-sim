@@ -149,6 +149,68 @@ describe('HistoryService (SQLite)', () => {
       ],
     });
   });
+  describe('GOTO', () => {
+    /**
+     * R1 walks to 0,3 (arrives on tick 3), then MOVEs. R2's target is an
+     * Obstacle: UNREACHABLE on tick 3, then RIGHT. A second GOTO at tick 9
+     * is pending across the tick-10 snapshot and arrives on tick 13.
+     */
+    async function playGoto(lastTick: number): Promise<FloorState[]> {
+      const recorded: FloorState[] = [];
+      for (let t = 0; t <= lastTick; t++) {
+        if (t === 0) {
+          await engine.floor(5, 5);
+          await engine.obstacle(2, 2);
+          await engine.place(1, 0, 0, Direction.N);
+          await engine.place(2, 4, 0, Direction.N);
+          await engine.goto(1, 0, 3);
+          await engine.queue(1, ['MOVE']);
+          await engine.goto(2, 2, 2);
+          await engine.queue(2, ['RIGHT']);
+        }
+        if (t === 9) await engine.goto(1, 4, 4);
+        recorded.push(await live());
+        if (t < lastTick) await engine.step();
+      }
+      return recorded;
+    }
+
+    it('liveState shows a GOTO with its target', async () => {
+      await playGoto(0);
+      expect((await live()).robots.map((r) => r.queue)).toEqual([
+        ['GOTO 0,3', 'MOVE'],
+        ['GOTO 2,2', 'RIGHT'],
+      ]);
+    });
+
+    it('stateAt(t) equals the live state across GOTO arrival and UNREACHABLE, t = 0..14', async () => {
+      const recorded = await playGoto(14);
+      // The script really used both endings.
+      expect(recorded[3].robots[0].queue).toEqual(['MOVE']);
+      expect(recorded[3].robots[1].queue).toEqual(['RIGHT']);
+      expect(recorded[12].robots[0].queue).toEqual(['GOTO 4,4']);
+      expect(recorded[13].robots[0]).toMatchObject({ x: 4, y: 4, queue: [] });
+      for (let t = 0; t <= 14; t++) {
+        expect({ t, state: await stateAt(t) }).toEqual({
+          t,
+          state: recorded[t],
+        });
+      }
+    });
+
+    it('a fork keeps a pending GOTO with its target, and the forked robot keeps walking', async () => {
+      await playGoto(14);
+      const result = await engine.fork(floorId(), 1);
+      if (!result.ok) throw new Error(result.reason);
+      expect((await live()).robots.map((r) => r.queue)).toEqual([
+        ['GOTO 0,3', 'MOVE'],
+        ['GOTO 2,2', 'RIGHT'],
+      ]);
+      await engine.step();
+      expect((await live()).robots[0]).toMatchObject({ x: 0, y: 2 });
+    });
+  });
+
   describe('fork', () => {
     /** Robot ids differ on a fork; their order is what replay relies on. */
     const withoutIds = (state: FloorState | null) =>

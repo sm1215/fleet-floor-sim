@@ -15,7 +15,6 @@ import {
   Robot,
   TickHistory,
 } from '../../database/entities/index.js';
-import type { Command } from '../shared/types.js';
 import type { FloorState } from './floor-state.js';
 import { applyEntry } from './replay.js';
 
@@ -73,7 +72,9 @@ export class HistoryService {
         direction: r.direction,
         queue: queued
           .filter((q) => q.robot.id === r.id)
-          .map((q) => q.command as Command),
+          .map((q) =>
+            q.params === null ? q.command : `${q.command} ${q.params}`,
+          ),
       })),
     };
   }
@@ -149,7 +150,10 @@ export class HistoryService {
       });
       await insertInChunks(
         manager.getRepository(QueuedCommand),
-        r.queue.map((command) => ({ command, params: null, robot })),
+        r.queue.map((item) => {
+          const [command, params = null] = item.split(' ');
+          return { command, params, robot };
+        }),
       );
     }
     const entries = await manager.getRepository(LogEntry).find({

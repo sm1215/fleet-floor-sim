@@ -30,7 +30,8 @@ A scrubber under the grid shows any past tick of the viewed floor, read-only. Pa
 - `EngineService.snapshotFrequency = 10`.
 - At the start of each tick, inside the tick's transaction, when `currentTick % snapshotFrequency === 0`, the Engine saves a snapshot labelled `currentTick`. It holds exactly the state at that tick. A failed tick rolls its snapshot back.
 - Skipped in `scenarioMode` (no log → nothing to replay).
-- `FloorState`: `{ width, height, cells: { x, y, obstacle }[], robots: { id, displayId, x, y, direction, queue: Command[] }[] }`. Cells sorted by y then x; robots by displayId; queues in FIFO order.
+- `FloorState`: `{ width, height, cells: { x, y, obstacle }[], robots: { id, displayId, x, y, direction, queue: string[] }[] }`. Cells sorted by y then x; robots by displayId; queues in FIFO order.
+- A queue item is the command, plus ` params` when it has them: `MOVE`, `GOTO 3,4`.
 
 ## Reconstruction
 
@@ -45,9 +46,10 @@ A scrubber under the grid shows any past tick of the viewed floor, read-only. Pa
 | `FLOOR w, h, RESIZED` | `planResize()` (same as live); apply creates, deletes and moves |
 | `OBSTACLE x, y, ON\|OFF` | set that cell's `obstacle` |
 | `PLACE R<d> x, y, DIR` | existing displayId → move and turn; new → `id = max(ids, 0) + 1`, empty queue |
-| `QUEUE R<d> CMD…` | append the commands to that robot's queue |
+| `QUEUE R<d> CMD…` | append the commands to that robot's queue; `QUEUE R<d> GOTO x,y` appends one item `GOTO x,y` |
+| `UNREACHABLE R<d> x, y` | mark that robot's GOTO head as given up, so the next `TICK` pops it |
 | `DELETE R<d>` | remove the robot and its queue |
-| `TICK n` | pop the queue head of every robot with a non-empty queue; set each robot's x/y/direction from the result lines (`EMPTY` → none) |
+| `TICK n` | set each robot's x/y/direction from the result lines (`EMPTY` → none); pop the queue head of every robot with a non-empty queue, except a `GOTO x,y` head, which is popped only when the robot's new x/y is the target or it was marked given up |
 
 ## Scrubber
 
@@ -74,7 +76,7 @@ While `viewTick` is not null, the grid shows the past state and nothing can chan
 ## Fork From Here
 
 - A button right of the number input. Forks the viewed floor at the scrubber's tick (`viewTick ?? currentTick`).
-- The new floor gets the cells, robots (same displayIds and directions) and queues at that tick, plus copies of the source's log entries and snapshots with `tick <= T`. Its `currentTick` = T. Its history matches the source up to T.
+- The new floor gets the cells, robots (same displayIds and directions) and queues (with params, e.g. GOTO targets) at that tick, plus copies of the source's log entries and snapshots with `tick <= T`. Its `currentTick` = T. Its history matches the source up to T.
 - Fork writes no log entry. The source is unchanged. The engine pauses and the view switches to the new floor, live.
 - Failure → `Floor failed to fork.`
 
@@ -109,9 +111,9 @@ API:
 
 - Schema (`timeline-schema.e2e-spec.ts`): shared displayId across floors; duplicate (floor, tick) rejected; `log_entry.floor_id` FK; migration backfills `tick`.
 - Floor scoping: PLACE max displayId per floor; QUEUE / DELETE / REPORT per floor; `doNext(floorId)`; every log line has its floorId and tick; `step()` advances only the active floor; `selectFloor()` pauses and switches tick; restart logs `TICK n+1`.
-- Replay (`replay.spec.ts`): one test per table row, one head popped per robot per TICK, displaced robot on resize, new robot ids, no mutation.
-- Snapshots / history: snapshots at 0, 10, 20 only; none in scenarioMode; rolled back with a failed tick; `stateAt(t)` equals the live state for t = 0..25 across resize, delete and obstacles; no snapshot → null; route validation.
-- Fork: live state equals source `stateAt(T)`; history matches; fork of a fork; source unchanged; selects new floor and pauses; no extra log entry.
+- Replay (`replay.spec.ts`): one test per table row, one head popped per robot per TICK, a GOTO head kept until arrival or UNREACHABLE, displaced robot on resize, new robot ids, no mutation.
+- Snapshots / history: snapshots at 0, 10, 20 only; none in scenarioMode; rolled back with a failed tick; `stateAt(t)` equals the live state for t = 0..25 across resize, delete, obstacles and GOTO (arrival and UNREACHABLE); no snapshot → null; route validation.
+- Fork: live state equals source `stateAt(T)`; GOTO params preserved; history matches; fork of a fork; source unchanged; selects new floor and pauses; no extra log entry.
 - Reset / Delete: per-floor reset; delete removes everything on that floor only; active → lowest id; last floor → new 5 x 5.
 
 Web:

@@ -1,0 +1,15 @@
+## pathfinding plan
+- Add a path scoped rules file that dictates the following behavior for an extension to the floor's existing functionality.
+- This should be created as a separate component with that respects the rules file.
+- Adjust other rules as needed
+- Add a new command called called `GOTO X,Y`.
+- It should stay at the top of the robot's queue until the robot arrives at the position or gives up.
+- On each tick, a robot running GOTO should find the shortest path in any direction to the target coordinates.
+- A robot should treat obstacles, floor boundaries, and every other robot's cell as walls. 
+- The robot faces the first step of the chosen path and makes a normal MOVE request for that tick, following all the normal rules for robot movement.
+- Turning to face a direction is free when it is part of a GOTO command.
+- If several first steps lead to equally short paths, prefer them in this order: NORTH, EAST, SOUTH, WEST.
+- If there's no path, the robot waits
+- After 3 ticks in a row with no path, the GOTO is dropped and an UNREACHABLE event is logged.
+- GOTO finishes on the tick the robot arrives.
+- Add a way to issue a GOTO command from the UI. When a robot is selected and the user Shift-Clicks an empty cell, the goto command should be issued. When a robot is selected add a small piece of text until the movement commands that instructs the user about the Shift click functionality that reads "Shift + Click an empty cell to issue a GOTO command".

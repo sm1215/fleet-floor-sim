@@ -1,6 +1,7 @@
 import type { LogEntry } from '../../database/entities/index.js';
 import { planResize } from '../floor/floor.model.js';
-import { type Command, DIRECTION_NAMES } from '../shared/types.js';
+import { parseGotoParams } from '../queue/queue.service.js';
+import { DIRECTION_NAMES, GOTO } from '../shared/types.js';
 import type { FloorState } from './floor-state.js';
 
 type Entry = Pick<LogEntry, 'action' | 'params' | 'result'>;
@@ -75,6 +76,17 @@ function place(state: FloorState, params: string): FloorState {
   };
 }
 
+/**
+ * A queue head is used up by the tick, except a GOTO, which stays until the
+ * robot ends the tick on its target or gives up (pathfinding.md).
+ */
+function headDone(robot: StateRobot): boolean {
+  const [command, params] = robot.queue[0]?.split(' ') ?? [];
+  if (command !== GOTO || robot.gaveUp) return true;
+  const target = parseGotoParams(params);
+  return !target || (target.x === robot.x && target.y === robot.y);
+}
+
 function tick(state: FloorState, result: string): FloorState {
   const reported = new Map<number, Pick<StateRobot, 'x' | 'y' | 'direction'>>();
   if (result !== 'EMPTY') {
@@ -91,11 +103,12 @@ function tick(state: FloorState, result: string): FloorState {
   }
   return {
     ...state,
-    robots: state.robots.map((r) => ({
-      ...r,
-      ...reported.get(r.displayId),
-      queue: r.queue.slice(1),
-    })),
+    robots: state.robots.map((r) => {
+      const moved = { ...r, ...reported.get(r.displayId) };
+      const queue = headDone(moved) ? moved.queue.slice(1) : moved.queue;
+      delete moved.gaveUp;
+      return { ...moved, queue };
+    }),
   };
 }
 
@@ -128,15 +141,26 @@ export function applyEntry(state: FloorState, entry: Entry): FloorState {
     case 'PLACE':
       return sorted(place(state, params));
     case 'QUEUE': {
-      // `R1 MOVE LEFT`
+      // `R1 MOVE LEFT` / `R1 GOTO 3,4`
       const [rId, ...commands] = params.split(' ');
       const displayId = displayIdOf(rId);
+      const items = commands[0] === GOTO ? [commands.join(' ')] : commands;
       return {
         ...state,
         robots: state.robots.map((r) =>
           r.displayId === displayId
-            ? { ...r, queue: [...r.queue, ...(commands as Command[])] }
+            ? { ...r, queue: [...r.queue, ...items] }
             : r,
+        ),
+      };
+    }
+    case 'UNREACHABLE': {
+      // `R1 3, 4`: written before its tick's TICK entry.
+      const displayId = displayIdOf(params.split(' ')[0]);
+      return {
+        ...state,
+        robots: state.robots.map((r) =>
+          r.displayId === displayId ? { ...r, gaveUp: true as const } : r,
         ),
       };
     }

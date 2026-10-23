@@ -78,6 +78,8 @@ export class Grid implements OnInit {
   readonly viewTick = input<number | null>(null);
   readonly gridError = output<string>();
   readonly robotClicked = output<number>();
+  /** Shift+Click on an empty Open cell with a robot selected (robot-rules.md). */
+  readonly gotoRequested = output<{ x: number; y: number }>();
   /** Every live floor shown, so App knows the floor id and refreshes its list. */
   readonly floorShown = output<Floor>();
   /** A past tick's state is shown; `historyQueue()` now answers for it. */
@@ -231,10 +233,15 @@ export class Grid implements OnInit {
   /**
    * Edit mode on: toggles Open/Obstacle, unless a robot is on the cell.
    * Edit mode off: moves the selected robot to an empty Open cell, or places
-   * a new robot facing North when none is selected.
+   * a new robot facing North when none is selected. With Shift and a robot
+   * selected, an empty Open cell emits `gotoRequested` instead.
    */
-  protected onCellClick(cell: CellModel): void {
+  protected onCellClick(cell: CellModel, shiftKey: boolean): void {
     if (this.readOnly() || this.robotsByCell().has(cell.id)) return;
+    if (shiftKey && !this.editMode() && !cell.obstacle && this.selectedRobotId() !== null) {
+      this.gotoRequested.emit({ x: cell.xPosition, y: cell.yPosition });
+      return;
+    }
     if (this.editMode()) {
       this.api
         .obstacleCommand(cell.xPosition, cell.yPosition)

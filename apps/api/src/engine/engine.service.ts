@@ -11,7 +11,7 @@ import { deleteFloorContents } from '../floor/floor-writes.js';
 import { DEFAULT_FLOOR_SIZE } from '../floor/floor.model.js';
 import type { FloorState } from '../history/floor-state.js';
 import { HistoryService } from '../history/history.service.js';
-import type { LogLine } from '../log-entry/log-params.js';
+import { type LogLine, unreachableParams } from '../log-entry/log-params.js';
 import { LogEntryService } from '../log-entry/log-entry.service.js';
 import type { NextCommand } from '../queue/next-command.js';
 import { QueueService } from '../queue/queue.service.js';
@@ -31,6 +31,9 @@ export interface EngineState {
   /** Errors from automatic steps since the last read. */
   errors: string[];
 }
+
+/** No-path ticks in a row after which a GOTO gives up (pathfinding.md). */
+export const GOTO_NO_PATH_LIMIT = 3;
 
 /** Most steps a single TICK may run. */
 export const MAX_TICK_AMOUNT = 99;
@@ -58,6 +61,11 @@ export class EngineService implements OnModuleInit, OnModuleDestroy {
   private errors: string[] = [];
   /** Each floor's tick; a floor not in the map is at tick 0. */
   private readonly ticks = new Map<number, number>();
+  /**
+   * Per floor: no-path ticks in a row of each pending GOTO, keyed by
+   * queued-command id. Replaced only when a tick commits.
+   */
+  private readonly noPathTicks = new Map<number, Map<number, number>>();
   private timer: ReturnType<typeof setTimeout> | undefined;
   /** Bumped on every start/stop so a step from an earlier run never reschedules. */
   private run = 0;
@@ -194,6 +202,7 @@ export class EngineService implements OnModuleInit, OnModuleDestroy {
       }),
     );
     this.ticks.delete(floorId);
+    this.noPathTicks.delete(floorId);
     if (this.floorId === floorId) this.floorId = remaining?.id ?? null;
     if (this.floorId === null) {
       await this.floor(DEFAULT_FLOOR_SIZE, DEFAULT_FLOOR_SIZE);
@@ -310,6 +319,10 @@ export class EngineService implements OnModuleInit, OnModuleDestroy {
     return this.direct.queue(this.floorId, displayId, commands, this.record);
   }
 
+  goto(displayId: number, x: number, y: number): Promise<CommandResult> {
+    return this.direct.goto(this.floorId, displayId, x, y, this.record);
+  }
+
   delete(displayId: number): Promise<CommandResult> {
     return this.direct.delete(this.floorId, displayId, this.record);
   }
@@ -343,6 +356,7 @@ export class EngineService implements OnModuleInit, OnModuleDestroy {
     await this.direct.clear();
     this.floorId = null;
     this.ticks.clear();
+    this.noPathTicks.clear();
   }
 
   /** Turns running on or off. */
@@ -366,6 +380,7 @@ export class EngineService implements OnModuleInit, OnModuleDestroy {
     this.stop();
     await this.inFlight;
     this.setTick(floorId, 0);
+    this.noPathTicks.delete(floorId);
     this.errors = [];
     return this.getState();
   }
@@ -389,18 +404,20 @@ export class EngineService implements OnModuleInit, OnModuleDestroy {
       const floorId = this.floorId;
       if (floorId === null) throw new Error(NO_FLOOR);
       const tick = this.tickOf(floorId) + 1;
-      await this.dataSource.transaction((manager) =>
+      const noPathTicks = await this.dataSource.transaction((manager) =>
         this.applyTick(manager, floorId, tick),
       );
       this.setTick(floorId, tick);
+      this.noPathTicks.set(floorId, noPathTicks);
     });
   }
 
+  /** Returns the floor's next no-path counts, to keep once the tick commits. */
   private async applyTick(
     manager: EntityManager,
     floorId: number,
     tick: number,
-  ): Promise<void> {
+  ): Promise<Map<number, number>> {
     // Holds the state at the tick being left, so replay can start from it.
     const from = tick - 1;
     if (!this.scenarioMode && from % this.snapshotFrequency === 0) {
@@ -410,23 +427,88 @@ export class EngineService implements OnModuleInit, OnModuleDestroy {
       await this.queueService.doNext(floorId, manager),
     );
     const next = taken.filter((item): item is NextCommand => item !== null);
+    const { moverIds, arriving, noPathTicks } = await this.planGotos(
+      manager,
+      floorId,
+      tick,
+      next,
+    );
     for (const { robot, command } of next) {
       if (command === 'LEFT') await this.commands.left(robot.id, manager);
       if (command === 'RIGHT') await this.commands.right(robot.id, manager);
+      if (command === 'MOVE') moverIds.push(robot.id);
     }
     // Block reasons are returned but not reported anywhere yet.
-    await this.commands.moveAll(
-      next
-        .filter((item) => item.command === 'MOVE')
-        .map((item) => item.robot.id),
-      manager,
-    );
+    const blocked = await this.commands.moveAll(moverIds, manager);
+    // A GOTO MOVE that reached its target finishes this tick.
+    for (const [robotId, queuedCommandId] of arriving) {
+      if (!blocked.some((block) => block.robotId === robotId)) {
+        await this.queueService.remove(queuedCommandId, manager);
+      }
+    }
     await this.log(
       manager,
       { floorId, action: 'TICK', params: String(tick) },
       (await this.direct.report(floorId, manager)).join('\n'),
       tick,
     );
+    return noPathTicks;
+  }
+
+  /**
+   * One pathfinding step per GOTO head, in displayId order, before the tick's
+   * MOVEs (pathfinding.md). Finished and given-up GOTOs are removed; robots
+   * with a path join the MOVEs. `arriving` maps a robot whose step lands on
+   * its target to its GOTO, removed once its MOVE succeeds.
+   */
+  private async planGotos(
+    manager: EntityManager,
+    floorId: number,
+    tick: number,
+    next: NextCommand[],
+  ) {
+    const previous = this.noPathTicks.get(floorId) ?? new Map<number, number>();
+    const noPathTicks = new Map<number, number>();
+    const moverIds: number[] = [];
+    const arriving = new Map<number, number>();
+    const gotos = next.filter((item) => item.command === 'GOTO');
+    const steps =
+      gotos.length === 0
+        ? []
+        : await this.commands.gotoSteps(
+            floorId,
+            gotos.map(({ robot, target }) => ({ robotId: robot.id, target })),
+            manager,
+          );
+    for (const [i, { robot, queuedCommandId: id, target }] of gotos.entries()) {
+      const step = steps[i];
+      if (step.kind === 'ARRIVED') {
+        await this.queueService.remove(id, manager);
+      } else if (step.kind === 'NO_PATH') {
+        const count = (previous.get(id) ?? 0) + 1;
+        if (count < GOTO_NO_PATH_LIMIT) {
+          noPathTicks.set(id, count);
+        } else {
+          await this.queueService.remove(id, manager);
+          await this.log(
+            manager,
+            {
+              floorId,
+              action: 'UNREACHABLE',
+              params: unreachableParams(robot.displayId, target.x, target.y),
+            },
+            'OK',
+            tick,
+          );
+        }
+      } else {
+        moverIds.push(robot.id);
+        if (step.next.x === target.x && step.next.y === target.y) {
+          arriving.set(robot.id, id);
+        }
+      }
+    }
+    return { moverIds, arriving, noPathTicks };
   }
 
   private stop(): void {

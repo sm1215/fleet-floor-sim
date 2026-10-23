@@ -1,4 +1,4 @@
-import { Direction, type Position } from '../shared/types.js';
+import { type Direction, FORWARD, type Position } from '../shared/types.js';
 
 export interface PlacedRobot extends Position {
   id: number;
@@ -24,13 +24,6 @@ export const BLOCKED_BY_OBSTACLE = 'Blocked by obstacle';
 export function blockedByRobot(robot: Pick<PlacedRobot, 'displayId'>): string {
   return `Blocked by "R${robot.displayId}"`;
 }
-
-const FORWARD: Record<Direction, Position> = {
-  [Direction.N]: { x: 0, y: 1 },
-  [Direction.E]: { x: 1, y: 0 },
-  [Direction.S]: { x: 0, y: -1 },
-  [Direction.W]: { x: -1, y: 0 },
-};
 
 const key = ({ x, y }: Position) => `${x},${y}`;
 

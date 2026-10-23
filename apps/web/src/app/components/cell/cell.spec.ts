@@ -75,6 +75,25 @@ describe('Cell', () => {
     expect(clicked).toHaveBeenCalledTimes(1);
   });
 
+  it('clicked carries the shiftKey of the click', async () => {
+    const { fixture, box } = await render(false);
+    const clicked = vi.fn();
+    fixture.componentInstance.clicked.subscribe(clicked);
+    box.dispatchEvent(new MouseEvent('click', { shiftKey: true }));
+    box.dispatchEvent(new MouseEvent('click'));
+    expect(clicked.mock.calls).toEqual([[{ shiftKey: true }], [{ shiftKey: false }]]);
+  });
+
+  it('Shift+mousedown does not start a text selection; a plain mousedown is left alone', async () => {
+    const { box } = await render(false);
+    const shift = new MouseEvent('mousedown', { shiftKey: true, cancelable: true });
+    const plain = new MouseEvent('mousedown', { cancelable: true });
+    box.dispatchEvent(shift);
+    box.dispatchEvent(plain);
+    expect(shift.defaultPrevented).toBe(true);
+    expect(plain.defaultPrevented).toBe(false);
+  });
+
   it('a click on its robot emits robotClicked, not clicked', async () => {
     const { fixture, el } = await render(false, { robot: true });
     const clicked = vi.fn();

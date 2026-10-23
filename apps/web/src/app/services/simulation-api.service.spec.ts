@@ -146,6 +146,11 @@ describe('SimulationApiService', () => {
       expectCommand('queue', { rId: 'R3', commands: ['LEFT'] });
     });
 
+    it('gotoCommand → POST /commands/goto with rId, x and y', () => {
+      service.gotoCommand(3, 2, 4).subscribe();
+      expectCommand('goto', { rId: 'R3', x: 2, y: 4 });
+    });
+
     it('deleteCommand → POST /commands/delete with rId', () => {
       service.deleteCommand(7).subscribe();
       expectCommand('delete', { rId: 'R7' });
@@ -281,5 +286,28 @@ describe('SimulationApiService', () => {
     ]);
     expect(loaded.queues.get(4)!.map((q) => q.command)).toEqual(['MOVE']);
     expect(loaded.queues.get(-6)!.map((q) => q.command)).toEqual(['LEFT']);
+  });
+
+  it('toLoadedState splits a GOTO queue item into command and params', () => {
+    const state: FloorState = {
+      width: 1,
+      height: 1,
+      cells: [{ x: 0, y: 0, obstacle: false }],
+      robots: [
+        {
+          id: 1,
+          displayId: 1,
+          x: 0,
+          y: 0,
+          direction: Direction.North,
+          queue: ['GOTO 3,4', 'MOVE'],
+        },
+      ],
+    };
+    const loaded = toLoadedState(1, state, new Map([[1, 1]]));
+    expect(loaded.queues.get(1)!.map((q) => [q.command, q.params])).toEqual([
+      ['GOTO', '3,4'],
+      ['MOVE', null],
+    ]);
   });
 });

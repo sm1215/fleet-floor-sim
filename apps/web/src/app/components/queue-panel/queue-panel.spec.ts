@@ -26,4 +26,14 @@ describe('QueuePanel', () => {
     const items = Array.from(el.querySelectorAll('li')).map((li) => li.textContent?.trim());
     expect(items).toEqual(['MOVE', 'LEFT', 'RIGHT']);
   });
+
+  it('shows params after the command only when there are some', async () => {
+    const commands: QueuedCommand[] = [
+      { id: 1, command: 'GOTO', params: '3,4', robotId: 3 },
+      { id: 2, command: 'MOVE', params: null, robotId: 3 },
+    ];
+    const el = await render(3, commands);
+    const items = Array.from(el.querySelectorAll('li')).map((li) => li.textContent?.trim());
+    expect(items).toEqual(['GOTO 3,4', 'MOVE']);
+  });
 });

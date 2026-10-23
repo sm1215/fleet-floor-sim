@@ -87,6 +87,7 @@ apps/api/                   NestJS API, scenario runner
 apps/api/database/migrations/  TypeORM migrations
 apps/api/src/engine/        Engine (tick loop, step)
 apps/api/src/queue/         Queue (doNext: next command per robot)
+apps/api/src/pathfinding/   Pathfinding (GOTO first step, pure BFS)
 diagrams/                   Excalidraw diagrams (source of truth)
 .claude/rules/              Path-scoped rules for Claude
 ```
@@ -120,6 +121,7 @@ Path-scoped rules in `.claude/rules/` load when working on matching files:
 - `robot-rules.md` — `apps/web/src/app/app.*`, `components/robot/**`, `components/grid/**`, `components/cell/**`, `components/queue-panel/**`, `services/simulation-api.service.ts`, `models/direction.ts`, `models/robot.model.ts`
 - `engine.md` — `apps/api/src/engine/**`
 - `queue.md` — `apps/api/src/queue/**`
+- `pathfinding.md` — `apps/api/src/pathfinding/**`, `src/engine/**`
 - `scenario-runner.md` — `apps/api/src/scenario/**`, `scenarios/**`
 - `timeline.md` — `apps/api/src/history/**`, `src/engine/**`, `src/floor/**`, `apps/api/database/**`, `apps/web/src/app/components/timeline/**`, `components/grid/**`, `app.*`, `services/simulation-api.service.ts`
 - `log-entry.md` — `apps/api/**`, `apps/web/src/app/components/log-modal/**`, `apps/web/src/app/app.*`, `services/simulation-api.service.ts`

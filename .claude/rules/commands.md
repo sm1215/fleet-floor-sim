@@ -14,10 +14,10 @@ paths:
 
 ## Endpoints
 
-One `POST /commands/<name>` route per command. Params come in the body and are validated by a DTO. Then the route calls the matching Engine method (`engine.md`). All command logic lives in the Engine. Robot command routes (LEFT / RIGHT / MOVE / QUEUE) only enqueue.
+One `POST /commands/<name>` route per command. Params come in the body and are validated by a DTO. Then the route calls the matching Engine method (`engine.md`). All command logic lives in the Engine. Robot command routes (LEFT / RIGHT / MOVE / QUEUE / GOTO) only enqueue.
 
 - Success → `200 { ok: true }`. The web refetches the state that changed.
-- Only the FLOOR, OBSTACLE, PLACE, QUEUE and DELETE routes exist so far. LEFT / RIGHT / MOVE / TICK / REPORT have no route yet; the web enqueues through `/commands/queue`.
+- Only the FLOOR, OBSTACLE, PLACE, QUEUE, GOTO and DELETE routes exist so far. LEFT / RIGHT / MOVE / TICK / REPORT have no route yet; the web enqueues through `/commands/queue`.
 
 | Command  | Route                     | Params                                          |
 | -------- | ------------------------- | ----------------------------------------------- |
@@ -28,6 +28,7 @@ One `POST /commands/<name>` route per command. Params come in the body and are v
 | OBSTACLE | `POST /commands/obstacle` | `x` (int, required), `y` (int, required)        |
 | PLACE    | `POST /commands/place`    | `rId` (optional), `x` (int), `y` (int), `direction` |
 | QUEUE    | `POST /commands/queue`    | `rId`, `commands` (one or more of `LEFT` / `RIGHT` / `MOVE`) |
+| GOTO     | `POST /commands/goto`     | `rId`, `x` (int), `y` (int)                     |
 | DELETE   | `POST /commands/delete`   | `rId`                                           |
 | TICK     | `POST /commands/tick`     | `amount` (int, default 1)                       |
 | REPORT   | `POST /commands/report`   | none                                            |
@@ -49,14 +50,22 @@ One `POST /commands/<name>` route per command. Params come in the body and are v
 - Enqueues the commands, in order, on the robot's FIFO queue.
 - Missing or invalid params, or any invalid command → the whole request is ignored and nothing is enqueued.
 
+## GOTO
+
+- Requires `rId`, int `x` and int `y`. Enqueues `GOTO` with params `x,y` (e.g. `3,4`) on the robot's FIFO queue.
+- Unknown robot, non-int x/y, or no cell at x/y → ignored.
+- An Obstacle or occupied target is still enqueued; the robot gives up after 3 no-path ticks (`pathfinding.md`).
+- Not a QUEUE command: QUEUE accepts only `LEFT` / `RIGHT` / `MOVE`.
+
 ## Tick execution
 
 Each Engine `step()` (`apps/api/src/engine`, see `engine.md`) calls `doNext()` (`apps/api/src/queue`, see `queue.md`) and executes the commands it returns. Per tick:
 
-1. `doNext()` returns one promise per robot, in `displayId` order, each resolving to its head command (FIFO) or `null`; the head is deleted from the queue.
-2. `LEFT`: rotate counter-clockwise in place, `(d + 3) % 4`. `RIGHT`: rotate clockwise in place, `(d + 1) % 4`.
-3. All `MOVE`s are resolved together (below). Robots that are not moving this tick stay in their cells.
-4. Persist every new direction and cell to the DB.
+1. `doNext()` returns one promise per robot, in `displayId` order, each resolving to its head command (FIFO) or `null`; the head is deleted from the queue, except a `GOTO` head, which stays (`queue.md`).
+2. `GOTO`: the robot is planned by pathfinding (`pathfinding.md`): it may turn for free and join the tick's MOVEs, finish, wait, or give up.
+3. `LEFT`: rotate counter-clockwise in place, `(d + 3) % 4`. `RIGHT`: rotate clockwise in place, `(d + 1) % 4`.
+4. All `MOVE`s (including GOTO moves) are resolved together (below). Robots that are not moving this tick stay in their cells.
+5. Persist every new direction and cell to the DB.
 
 ### MOVE resolution
 
@@ -136,6 +145,7 @@ Service / DTO specs:
 - OBSTACLE: toggles Open ↔ Obstacle; ON a robot's cell, missing x/y or no cell → ignored.
 - PLACE: creates a new robot; updates the cell and direction of an existing `displayId`; accepts only uppercase direction names.
 - PLACE without `rId`: `displayId` = max + 1 (R1, R3 → R4); no robots → 1.
+- GOTO: enqueues `GOTO` with params `x,y` and logs `QUEUE R1 GOTO 3,4`; an Obstacle or occupied target is still enqueued; unknown robot or no cell → ignored, nothing inserted or logged; e2e missing `x` or `rId: 'r1'` → 400.
 - DELETE: removes the robot and its queue; unknown robot → ignored.
 - TICK: defaults to 1; calls `step()` `amount` times.
 - REPORT: prints the shared report (format tests live in `log-entry.md`).

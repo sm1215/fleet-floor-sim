@@ -2,9 +2,11 @@ import { Direction } from '../shared/types.js';
 import {
   deleteParams,
   floorParams,
+  gotoParams,
   obstacleParams,
   placeParams,
   queueParams,
+  unreachableParams,
 } from './log-params.js';
 
 describe('log params', () => {
@@ -21,6 +23,14 @@ describe('log params', () => {
   it('QUEUE: rId and the commands in order', () => {
     expect(queueParams(1, ['MOVE'])).toBe('R1 MOVE');
     expect(queueParams(1, ['MOVE', 'LEFT'])).toBe('R1 MOVE LEFT');
+  });
+
+  it('QUEUE of a GOTO: rId GOTO x,y', () => {
+    expect(gotoParams(1, 3, 4)).toBe('R1 GOTO 3,4');
+  });
+
+  it('UNREACHABLE: rId x, y', () => {
+    expect(unreachableParams(1, 3, 4)).toBe('R1 3, 4');
   });
 
   it('DELETE: rId', () => {

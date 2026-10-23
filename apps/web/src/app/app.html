@@ -47,6 +47,7 @@
     [viewTick]="viewTick()"
     (gridError)="addError($event)"
     (robotClicked)="onRobotClicked($event)"
+    (gotoRequested)="onGotoRequested($event)"
     (floorShown)="onFloorShown($event)"
     (historyShown)="onHistoryShown()"
   />
@@ -91,27 +92,32 @@
     [commands]="queue()"
   />
 
-  <div class="area-controls flex justify-center gap-3">
-    <app-button
-      label="Turn Left"
-      [disabled]="selectedRobotId() === null || readOnly()"
-      (pressed)="onTurnLeft()"
-    />
-    <app-button
-      label="Turn Right"
-      [disabled]="selectedRobotId() === null || readOnly()"
-      (pressed)="onTurnRight()"
-    />
-    <app-button
-      label="Move"
-      [disabled]="selectedRobotId() === null || readOnly()"
-      (pressed)="onMove()"
-    />
-    <app-button
-      label="Delete"
-      [disabled]="selectedRobotId() === null || readOnly()"
-      (pressed)="onDelete()"
-    />
+  <div class="area-controls flex flex-col items-center gap-2">
+    <div class="flex justify-center gap-3">
+      <app-button
+        label="Turn Left"
+        [disabled]="selectedRobotId() === null || readOnly()"
+        (pressed)="onTurnLeft()"
+      />
+      <app-button
+        label="Turn Right"
+        [disabled]="selectedRobotId() === null || readOnly()"
+        (pressed)="onTurnRight()"
+      />
+      <app-button
+        label="Move"
+        [disabled]="selectedRobotId() === null || readOnly()"
+        (pressed)="onMove()"
+      />
+      <app-button
+        label="Delete"
+        [disabled]="selectedRobotId() === null || readOnly()"
+        (pressed)="onDelete()"
+      />
+    </div>
+    @if (selectedRobotId() !== null && !editMode() && !readOnly()) {
+      <p class="text-sm">Shift + Click an empty cell to issue a GOTO command</p>
+    }
   </div>
 </main>
 

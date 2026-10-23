@@ -335,6 +335,19 @@ export class App {
     });
   }
 
+  /** Queues a GOTO x,y for the selected robot (Shift+Click), then refetches its queue. */
+  onGotoRequested({ x, y }: { x: number; y: number }): void {
+    const id = this.selectedRobotId();
+    const robot = id === null ? undefined : this.grid().findRobot(id);
+    if (id === null || !robot || this.readOnly()) return;
+    this.api.gotoCommand(robot.displayId, x, y).subscribe({
+      next: () => {
+        if (this.selectedRobotId() === id) this.reloadQueue();
+      },
+      error: () => this.addError(COMMAND_ERROR),
+    });
+  }
+
   /** Queues a command for the selected robot, then refetches its queue; does nothing with no selection. */
   private sendCommand(command: CommandName): void {
     const id = this.selectedRobotId();

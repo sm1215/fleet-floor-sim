@@ -156,6 +156,33 @@ describe('Engine logging (SQLite)', () => {
     });
   });
 
+  it('a failed TICK write on the 3rd no-path tick keeps the GOTO and its count', async () => {
+    await engine.place(1, 0, 0, Direction.N);
+    await engine.obstacle(2, 2);
+    await engine.goto(1, 2, 2);
+    await engine.step();
+    await engine.step();
+    const create = logEntries.create.bind(logEntries);
+    vi.spyOn(logEntries, 'create').mockImplementation((entry, manager) =>
+      entry.action === 'TICK'
+        ? Promise.reject(new Error('log down'))
+        : create(entry, manager),
+    );
+    await expect(engine.step()).rejects.toThrow('log down');
+    vi.restoreAllMocks();
+    expect(await dataSource.getRepository(QueuedCommand).count()).toBe(1);
+    expect((await entries()).map((e) => e.action)).not.toContain('UNREACHABLE');
+
+    await engine.step();
+    expect(await dataSource.getRepository(QueuedCommand).count()).toBe(0);
+    expect(
+      (await entries()).slice(-2).map((e) => [e.action, e.params, e.tick]),
+    ).toEqual([
+      ['UNREACHABLE', 'R1 2, 2', 3],
+      ['TICK', '3', 3],
+    ]);
+  });
+
   it('a tick never logs between a command and its entry', async () => {
     await engine.place(1, 0, 0, Direction.N);
     const create = logEntries.create.bind(logEntries);

@@ -34,3 +34,6 @@
 
 #### While implementing the GOTO pathfinding, I'm choosing to omit supporting that command in the Scenario Runner
 > Been working at this project for a length of time now and that's something I would push against to be in a future update. Assuming the request prioritizes client-facing support over CLI tooling.
+
+#### Also, the GOTO counter is stored in memory. Noting it as a quirk, because forking a floor or restarting the API means the current GOTO count gets reset.
+> It's minor, it should be fine. If a robot is truly blocked it will still stop trying within a reasonable limit.

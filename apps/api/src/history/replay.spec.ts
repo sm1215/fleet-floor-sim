@@ -132,6 +132,48 @@ describe('applyEntry()', () => {
     expect(next.robots.map((r) => r.queue)).toEqual([['RIGHT'], []]);
   });
 
+  describe('GOTO', () => {
+    it('QUEUE R1 GOTO x,y appends one GOTO item with its target', () => {
+      const start = floor(5, 5, [robot(1, 1, 0, 0, Direction.N, ['MOVE'])]);
+      const next = applyEntry(start, entry('QUEUE', 'R1 GOTO 3,4'));
+      expect(next.robots[0].queue).toEqual(['MOVE', 'GOTO 3,4']);
+    });
+
+    it('TICK keeps a GOTO head while the robot is not on the target', () => {
+      const start = floor(5, 5, [
+        robot(1, 1, 0, 0, Direction.N, ['GOTO 0,2', 'MOVE']),
+      ]);
+      const next = applyEntry(start, entry('TICK', '1', 'R1 0,1,NORTH'));
+      expect(next.robots).toEqual([
+        robot(1, 1, 0, 1, Direction.N, ['GOTO 0,2', 'MOVE']),
+      ]);
+    });
+
+    it('TICK pops a GOTO head when the robot ends on the target', () => {
+      const start = floor(5, 5, [
+        robot(1, 1, 0, 1, Direction.N, ['GOTO 0,2', 'MOVE']),
+      ]);
+      const next = applyEntry(start, entry('TICK', '2', 'R1 0,2,NORTH'));
+      expect(next.robots[0].queue).toEqual(['MOVE']);
+    });
+
+    it('UNREACHABLE makes the next TICK pop the GOTO, not the command behind it', () => {
+      const start = floor(5, 5, [
+        robot(1, 1, 0, 0, Direction.N, ['GOTO 2,2', 'MOVE']),
+        robot(2, 2, 4, 4, Direction.N, ['GOTO 3,3']),
+      ]);
+      const marked = applyEntry(start, entry('UNREACHABLE', 'R1 2, 2'));
+      const next = applyEntry(
+        marked,
+        entry('TICK', '3', 'R1 0,0,NORTH\nR2 4,4,NORTH'),
+      );
+      expect(next.robots).toEqual([
+        robot(1, 1, 0, 0, Direction.N, ['MOVE']),
+        robot(2, 2, 4, 4, Direction.N, ['GOTO 3,3']),
+      ]);
+    });
+  });
+
   it('TICK with EMPTY leaves no robots to update', () => {
     expect(applyEntry(floor(2, 2), entry('TICK', '1', 'EMPTY'))).toEqual(
       floor(2, 2),

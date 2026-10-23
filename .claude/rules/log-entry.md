@@ -17,7 +17,7 @@ paths:
 
 Write one entry after each successful state change. Ignored or failed requests are not logged (see Ignored requests in `commands.md`).
 
-The Engine logs every successful command it executes (FLOOR, OBSTACLE, PLACE, QUEUE, DELETE) and each tick, in-process via `LogEntryService`. Controllers don't log.
+The Engine logs every successful command it executes (FLOOR, OBSTACLE, PLACE, QUEUE, GOTO, DELETE), each GOTO that gives up, and each tick, in-process via `LogEntryService`. Controllers don't log.
 
 - Every change goes through `POST /commands/*`. The resource routes are read-only and limited to what the web uses: `GET /floors`, `/cells`, `/robots`, `/robots/:id/queued-commands` and `/log-entries`. The other writes are Reset (`POST /floors/:id/reset`, clears that floor's log), Fork, Delete Floor and floor selection (`timeline.md`); none writes an entry. A fork copies the source's entries up to its tick.
 
@@ -28,14 +28,16 @@ The Engine logs every successful command it executes (FLOOR, OBSTACLE, PLACE, QU
 | ---------- | --------------------------------- | ----------------------------------------------------- |
 | `PLACE`    | A robot is placed or moved        | `rId`, x, y, direction, e.g. `R1 2, 3, NORTH`         |
 | `OBSTACLE` | A cell's obstacle state changes   | x, y, and whether it was toggled on or off, e.g. `2, 3, ON` |
-| `QUEUE`    | Commands are enqueued (QUEUE, LEFT, RIGHT, MOVE) | `rId` and the commands in order, e.g. `R1 MOVE` or `R1 MOVE LEFT` |
+| `QUEUE`    | Commands are enqueued (QUEUE, LEFT, RIGHT, MOVE, GOTO) | `rId` and the commands in order, e.g. `R1 MOVE` or `R1 MOVE LEFT`; a GOTO is `R1 GOTO 3,4` |
 | `DELETE`   | A robot is deleted                | `rId`, e.g. `R1`                                      |
 | `FLOOR`    | The floor is created or resized   | width, height, and created or resized, e.g. `5, 5, CREATED` |
+| `UNREACHABLE` | A GOTO gives up (3rd no-path tick in a row) | `rId`, target x, y, e.g. `R1 3, 4`        |
 | `TICK`     | A tick completes                  | the tick number                                       |
 
 - `action` is the command name from the table.
 - `params` is the params as text.
 - `result` is `OK`, or for `TICK` the tick report (below).
+- `UNREACHABLE` is written inside the tick's transaction, before that tick's `TICK` entry, with the tick's number (`pathfinding.md`).
 
 ## Tick logging
 
@@ -72,6 +74,8 @@ API:
 - A failed entry write rolls back its command (each of FLOOR, OBSTACLE, PLACE, QUEUE, DELETE) or its whole tick.
 - A tick requested while a command's entry is being written logs after that entry.
 - `scenarioMode` set to `true` → no entry for commands or ticks.
+- `gotoParams(1, 3, 4)` → `R1 GOTO 3,4`; `unreachableParams(1, 3, 4)` → `R1 3, 4`.
+- GOTO writes one `QUEUE` entry `R1 GOTO 3,4`. A GOTO that gives up writes `UNREACHABLE R1 3, 4: OK` before the tick's `TICK` entry; none in `scenarioMode`.
 - POST / PATCH / DELETE on the resource routes, and the removed reads (`GET /<resource>/:id`, `GET /queued-commands`) → 404 and nothing changes (`crud.e2e-spec.ts`).
 - `step()` writes a `TICK` entry whose params is the tick number and whose result is the report joined with `\n`, sorted by `displayId`.
 - `step()` with no robots writes `EMPTY`.

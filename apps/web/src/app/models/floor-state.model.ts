@@ -1,5 +1,4 @@
 import { Direction } from './direction';
-import { CommandName } from './queued-command.model';
 
 /** A floor at one tick, as `GET /floors/:id/history` returns it (timeline.md). */
 export interface FloorState {
@@ -14,6 +13,7 @@ export interface FloorState {
     x: number;
     y: number;
     direction: Direction;
-    queue: CommandName[];
+    /** Each command, plus ` params` when it has them: `MOVE`, `GOTO 3,4`. */
+    queue: string[];
   }[];
 }

@@ -1,7 +1,9 @@
 <div class="min-h-0 flex-1 overflow-y-auto border border-[#1e1e1e] p-3">
   <ol class="space-y-1">
     @for (command of commands(); track command.id) {
-      <li>{{ command.command }}</li>
+      <li>
+        {{ command.params === null ? command.command : command.command + ' ' + command.params }}
+      </li>
     }
   </ol>
 </div>

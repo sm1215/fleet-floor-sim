@@ -14,9 +14,12 @@ paths:
 - Returns `Promise<Promise<NextCommand | null>[]>`: a promise of an array with one promise per robot found, in the same `displayId` order.
 - Each robot's promise takes its next queued command (FIFO: lowest queued-command Id) from the DB and parses it.
 - It resolves to `{ robot, command }`: the robot plus its parsed command (`LEFT` / `RIGHT` / `MOVE`).
+- A `GOTO` head resolves to `{ robot, command: 'GOTO', queuedCommandId, target: { x, y } }`, parsed from params `x,y` (`^\d+,\d+$` only). It is **not deleted**: it stays at the head until the Engine removes it (`pathfinding.md`), and the commands behind it are not returned.
+- A `GOTO` with params that fail to parse is deleted and resolves to `null`.
+- The Engine removes a GOTO through `QueueService.remove(queuedCommandId, manager)`.
 - A robot with an empty queue, or whose command fails to parse, resolves to `null`.
 - `doNext()` does not execute commands. The Engine's `step()` calls it and executes the returned commands (see `engine.md` and `commands.md`).
-- Each command that is taken is deleted from the DB whether it later succeeds or fails, including commands that fail to parse.
+- Each command that is taken (except a valid `GOTO`) is deleted from the DB whether it later succeeds or fails, including commands that fail to parse.
 - Robots are taken one at a time, in `displayId` order. If one fails, the rest reject without touching the DB, so nothing is deleted after a tick's transaction rolls back (see `log-entry.md`).
 
 ## Testing
@@ -33,4 +36,8 @@ Every behavioral rule above has at least one test. Add or change a rule → add 
 - `LEFT` / `RIGHT` / `MOVE` are parsed and returned with their robot.
 - A command that fails to parse resolves to `null`.
 - Every command taken is deleted from the DB, including one that fails to parse.
+- A `GOTO 3,4` head resolves to the GOTO with its target and queued-command id; the row still exists, and a second `doNext()` returns the same GOTO.
+- Commands queued behind a GOTO are not returned.
+- A GOTO with params `null`, `3` or `a,b` resolves to `null` and is deleted.
+- `remove(id, manager)` deletes that row only.
 - A dequeue failing mid-tick leaves every other robot's queue unchanged, even after the rollback (`engine-logging.spec.ts`).

@@ -93,7 +93,10 @@ export function toLoadedState(
         const id = idOf(r.displayId);
         return [
           id,
-          r.queue.map((command, i) => ({ id: i + 1, command, params: null, robotId: id })),
+          r.queue.map((item, i) => {
+            const [command, params = null] = item.split(' ');
+            return { id: i + 1, command: command as QueuedCommand['command'], params, robotId: id };
+          }),
         ];
       }),
     ),
@@ -154,6 +157,11 @@ export class SimulationApiService {
 
   queueCommand(displayId: number, command: CommandName): Observable<void> {
     return this.command('queue', { rId: rId(displayId), commands: [command] });
+  }
+
+  /** Enqueues a GOTO x,y for robot `displayId` (pathfinding.md). */
+  gotoCommand(displayId: number, x: number, y: number): Observable<void> {
+    return this.command('goto', { rId: rId(displayId), x, y });
   }
 
   /** Deletes a robot and its queued commands. */

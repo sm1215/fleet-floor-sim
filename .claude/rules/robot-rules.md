@@ -44,6 +44,16 @@ paths:
 - Obstacle or occupied cell → no request.
 - Failure → nothing moves and `Robot failed to place.` shows.
 
+## GOTO (Shift+Click)
+
+- Edit mode off, robot selected: Shift+Click on an empty Open cell sends `POST /commands/goto { rId, x, y }` with the selected robot's `R<displayId>`, through `SimulationApiService.gotoCommand()`. It never moves the robot by PLACE.
+- Shift+Click on an Obstacle or occupied cell → no request.
+- No robot selected → Shift+Click behaves like a normal click (places a robot).
+- Edit mode on → Shift+Click behaves like a normal click (toggles the obstacle).
+- Success → the queue panel refetches. Failure → `Command failed to queue.` shows.
+- While a robot is selected, Edit mode is off and the live tick is shown, `Shift + Click an empty cell to issue a GOTO command` shows below the movement buttons (`text-sm`). It hides in Edit mode and while a past tick is shown, where Shift+Click cannot issue a GOTO.
+- Shift+mousedown on a cell is `preventDefault`ed, so Shift+Click never extends a text selection. A plain mousedown is left alone.
+
 ## Persistence
 
 - On load, `GET /robots` renders every stored robot on its cell with its direction,
@@ -82,6 +92,7 @@ paths:
 
 - Selecting a robot sends `GET /robots/:id/queued-commands` and shows the result in FIFO order (ascending Id).
 - A successful POST refetches `GET /robots/:id/queued-commands` into the panel.
+- Each command shows as its name, plus ` params` when it has them: `MOVE`, `GOTO 3,4`.
 - A failed POST leaves the panel unchanged and shows `Command failed to queue.` (see Errors in `frontend.md`).
 
 ## Styles
@@ -124,6 +135,14 @@ Client (`grid.spec.ts`):
 - Robot click in edit mode → selects it; no `POST /commands/obstacle`.
 - Robot click in non-edit mode → selects it; no `POST /commands/place`.
 - `removeRobot(id)` → that robot is no longer rendered; others stay.
+- Shift+Click (edit off, robot selected) on an empty Open cell → `gotoRequested` emits `{ x, y }`, no `POST /commands/place`.
+- Shift+Click on an Obstacle or occupied cell → no emit, no POST.
+- Shift+Click in edit mode → normal obstacle toggle, no emit. With no robot selected → normal place.
+
+Client (`cell.spec.ts`):
+
+- A click emits `{ shiftKey }` from the event: `true` with Shift, `false` without.
+- Shift+mousedown is `preventDefault`ed; a plain mousedown is not.
 
 Client (`app.spec.ts`):
 
@@ -136,10 +155,13 @@ Client (`app.spec.ts`):
 - Selecting a robot → `GET /robots/:id/queued-commands`; commands shown in order.
 - POST success → the panel is refetched.
 - POST failure → panel unchanged and `Command failed to queue.` shown.
+- `gotoRequested` → `POST /commands/goto` with the selected robot's displayId and x/y, then the panel is refetched; failure → `Command failed to queue.`
+- The Shift+Click hint renders below the movement buttons only while a robot is selected, Edit mode is off, and the live tick is shown.
 
 Client (`queue-panel.spec.ts`):
 
 - Renders commands in the given order.
+- `{ command: 'GOTO', params: '3,4' }` renders `GOTO 3,4`; `{ command: 'MOVE', params: null }` renders `MOVE`.
 
 API (`robot.service.spec.ts`, `queued-command.service.spec.ts`; the only robot reads are `GET /robots` and `GET /robots/:id/queued-commands`):
 

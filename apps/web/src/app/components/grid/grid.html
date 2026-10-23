@@ -52,7 +52,7 @@
           [robot]="robot"
           [editMode]="editMode()"
           [selected]="robot !== undefined && robot.id === selectedRobotId()"
-          (clicked)="onCellClick(cell)"
+          (clicked)="onCellClick(cell, $event.shiftKey)"
           (robotClicked)="robotClicked.emit(robot!.id)"
           [attr.data-x]="cell.xPosition"
           [attr.data-y]="cell.yPosition"

@@ -361,6 +361,60 @@ describe('DirectCommandsService (SQLite)', () => {
       );
     });
 
+    describe('goto', () => {
+      const queued = () =>
+        dataSource.getRepository(QueuedCommand).find({ order: { id: 'ASC' } });
+
+      beforeEach(async () => {
+        await floor(5, 5);
+        await direct.place(floorId, 1, 0, 0, Direction.N);
+      });
+
+      it('enqueues GOTO x,y after the existing queue and logs QUEUE R1 GOTO 3,4', async () => {
+        await direct.queue(floorId, 1, ['MOVE']);
+        const record = vi.fn().mockResolvedValue(undefined);
+        await expect(direct.goto(floorId, 1, 3, 4, record)).resolves.toEqual({
+          ok: true,
+          log: {
+            floorId: expect.any(Number) as number,
+            action: 'QUEUE',
+            params: 'R1 GOTO 3,4',
+          },
+        });
+        expect(record).toHaveBeenCalledTimes(1);
+        expect((await queued()).map((q) => [q.command, q.params])).toEqual([
+          ['MOVE', null],
+          ['GOTO', '3,4'],
+        ]);
+      });
+
+      it('unknown robot or no cell at x/y → ignored, nothing inserted or logged', async () => {
+        const record = vi.fn();
+        await expect(direct.goto(floorId, 9, 1, 1, record)).resolves.toEqual({
+          ok: false,
+          reason: 'Robot R9 not found',
+        });
+        await expect(direct.goto(floorId, 1, 9, 9, record)).resolves.toEqual({
+          ok: false,
+          reason: 'No cell at 9,9',
+        });
+        await expect(direct.goto(floorId, 1, 1.5, 1, record)).resolves.toEqual({
+          ok: false,
+          reason: 'No cell at 1.5,1',
+        });
+        expect(record).not.toHaveBeenCalled();
+        expect(await queued()).toEqual([]);
+      });
+
+      it('an Obstacle or occupied target is still enqueued', async () => {
+        await direct.obstacle(floorId, 2, 2);
+        await direct.place(floorId, 2, 4, 4, Direction.N);
+        expect((await direct.goto(floorId, 1, 2, 2)).ok).toBe(true);
+        expect((await direct.goto(floorId, 1, 4, 4)).ok).toBe(true);
+        expect((await queued()).map((q) => q.params)).toEqual(['2,2', '4,4']);
+      });
+    });
+
     it('delete removes the robot and its queue; unknown robot is ignored', async () => {
       await floor(5, 5);
       await direct.place(floorId, 1, 0, 0, Direction.N);

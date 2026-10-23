@@ -10,6 +10,7 @@ import { DIRECTION_NAMES } from '../shared/types.js';
 import type { CommandResult } from './command-result.js';
 import { DeleteCommandDto } from './dto/delete-command.dto.js';
 import { FloorCommandDto } from './dto/floor-command.dto.js';
+import { GotoCommandDto } from './dto/goto-command.dto.js';
 import { ObstacleCommandDto } from './dto/obstacle-command.dto.js';
 import { PlaceCommandDto } from './dto/place-command.dto.js';
 import { QueueCommandDto } from './dto/queue-command.dto.js';
@@ -52,6 +53,12 @@ export class CommandsController {
   @HttpCode(200)
   queue(@Body() dto: QueueCommandDto) {
     return respond(this.engine.queue(parseRId(dto.rId), dto.commands));
+  }
+
+  @Post('goto')
+  @HttpCode(200)
+  goto(@Body() dto: GotoCommandDto) {
+    return respond(this.engine.goto(parseRId(dto.rId), dto.x, dto.y));
   }
 
   @Post('delete')
