@@ -58,23 +58,36 @@ Open http://localhost:4200 in a browser.
 
 ### Other commands
 
-| Command                        | Purpose                          |
-| ------------------------------ | -------------------------------- |
-| `npm run build`                | Build all workspaces             |
-| `npm run test`                 | Run unit tests in all workspaces |
-| `npm run test:e2e -w apps/api` | Run the API e2e tests            |
-| `npm run lint`                 | Lint all JS/TS                   |
-| `npm run format`               | Format with Prettier             |
+| Command                                    | Purpose                          |
+| ------------------------------------------ | -------------------------------- |
+| `npm run build`                            | Build all workspaces             |
+| `npm run test`                             | Run unit tests in all workspaces |
+| `npm run test:e2e -w apps/api`             | Run the API e2e tests            |
+| `npm run lint`                             | Lint all JS/TS                   |
+| `npm run format`                           | Format with Prettier             |
+| `npm run scenario -- path/to/scenario.txt` | Run a Scenario                   |
 
 ## Scenario Runner
 
-Not implemented yet. Planned usage:
+The Scenario Runner is a standalone script that loads a plain-text scenario file and runs it against the Engine directly (not over HTTP). It does not need the dev server running, and it uses an in-memory database, so the real SQLite file is never touched. Each run starts on a new 5 x 5 floor.
+
+To run the first example scenario, run this from the repo root:
 
 ```sh
-npm run scenario -- path/to/scenario.txt
+npm run scenario -- scenarios/scenario-1.txt
 ```
 
-It will load a plain-text scenario file and run it against the Engine directly (not over HTTP). The scenario file format is still to be defined.
+This builds the API into `apps/api/dist-scenario/` first, then runs the scenario. Each `REPORT` line in the file prints the robots' positions to stdout:
+
+```text
+R1 1,0,EAST
+R2 2,0,EAST
+R3 3,0,EAST
+```
+
+- Add `-s` (`npm run -s scenario -- …`) to keep npm's banner lines out of the output.
+- A path that doesn't exist is looked up in `scenarios/`, so `npm run scenario -- scenario-1.txt` also works.
+- Example scenarios are in [`scenarios/`](scenarios/), and their expected `REPORT` output is in [`scenarios/expected/`](scenarios/expected/).
 
 ## Modules Chosen
 > I find Module C to be interesting from a troubleshooting perspective. If anything were to go wrong, a tool with this capability would be helpful to see the events leading up to a problem. It would also be useful from an auditing perspective, as proof that any given robot was at a specific place at said time. 
