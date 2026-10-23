@@ -167,3 +167,15 @@ User asked for a plan: interface default floor 10 wide x 8 high, scenario runner
 User asked to execute default-floor-10x8-plan.md. API: DEFAULT_FLOOR_WIDTH 10 / HEIGHT 8 for new, reset, recreated floors and the FLOOR default; scenario uses SCENARIO_FLOOR_SIZE 5. Web grid defaults 10x8. Rulings: commands/engine e2e expect "10, 8, CREATED" (log text, no 5x5 edge); grid pre-load slider test now 10/8. Rules, CLAUDE.md, diagram updated. Tests first; api 307, e2e 71, web 235, lint/build/prettier pass. Manual UI check not run. Not committed.
 
 User asked to fix review minors 1-3. app.spec: renamed "renders the default 5 x 5 floor" to "renders the loaded floor"; resetFloor mocks return 10x8 (Reset All mock also serves 10x8 cells) and the Yes test asserts 80 cells (RED then GREEN). Reset comments name the constants / "API default size". README is the user's edit, left alone. web 235, lint/build/prettier pass. Not committed.
+
+User asked to run npm run build and test the output. Both builds pass. Ran built API (dist/src/main) on port 3999 against a temp DB copy: GET routes, DTO validation, place/queue/step/log round-trip OK. Served dist/web/browser on 4300 (bundle copy with localhost:3000 swapped for 3999, since 3000/4200 were in use) and rendered it in headless Edge: 10x8 grid, R1, controls, floors list. Temp processes stopped. No repo changes.
+
+User asked to add a README section on running the Scenario Runner, with a copy-paste command for the first scenario. Replaced the stale "Not implemented yet" section: what it does (Direct Run, in-memory DB, 5 x 5 start), `npm run scenario -- scenarios/scenario-1.txt`, sample output, `-s` tip, scenarios/ fallback lookup, examples and expected folders. Ran the command: output matched scenarios/expected/scenario-1-report.txt. Not committed.
+
+User asked to add `npm run scenario -- path/to/scenario.txt` ("Run a Scenario") to the README's Other commands table. Added as the last row and re-padded the table columns. Not committed.
+
+User asked to run all 5 scenarios and verify against scenarios/expected. Ran `npm run -s scenario` for scenario-1..5 and compared stdout to each expected report (ignoring CR/trailing newline). All 5 matched, exit 0. No code changes.
+
+User asked to verify `npm run db:migrate` and fix the README Database section. Script exists (root + apps/api); migration:show listed all 4 migrations applied. Replaced "not available yet" with run instructions and a db:migrate / generate / revert table. Then spawned a subagent to compare README vs CLAUDE.md for gaps. Not committed.
+
+User picked README additions from the subagent review. Added Using the App (floor, robots, arrow keys, Edit mode, Step/Play, Log, Reset All, Delete Floor, GOTO, timeline/fork), scenario file format, tech stack, project structure. Diagrams called the starting point, not source of truth (user ruling). Env column renamed to "Value in .env.example". Fixed 3 typos; Prettier whitespace pass. Facts checked against code/rules. Not committed.
