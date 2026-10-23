@@ -3,7 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { LogEntry } from '../../database/entities/index.js';
 
-export type NewLogEntry = Pick<LogEntry, 'action' | 'params' | 'result'>;
+export type NewLogEntry = Pick<
+  LogEntry,
+  'action' | 'params' | 'result' | 'tick'
+> & { floorId: number };
 
 @Injectable()
 export class LogEntryService {
@@ -12,12 +15,19 @@ export class LogEntryService {
   ) {}
 
   /** Pass a transaction's manager to write the entry inside it. */
-  create(entry: NewLogEntry, manager?: EntityManager): Promise<LogEntry> {
+  create(
+    { floorId, ...entry }: NewLogEntry,
+    manager?: EntityManager,
+  ): Promise<LogEntry> {
     const repo = manager?.getRepository(LogEntry) ?? this.repo;
-    return repo.save(repo.create(entry));
+    return repo.save(repo.create({ ...entry, floor: { id: floorId } }));
   }
 
-  findAll(): Promise<LogEntry[]> {
-    return this.repo.find({ order: { id: 'ASC' } });
+  /** One floor's entries, oldest first. */
+  findAll(floorId: number): Promise<LogEntry[]> {
+    return this.repo.find({
+      where: { floor: { id: floorId } },
+      order: { id: 'ASC' },
+    });
   }
 }

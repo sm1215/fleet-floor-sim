@@ -21,6 +21,7 @@ describe('LogEntryController', () => {
   });
 
   it('findAll', async () => {
-    await expect(controller.findAll()).resolves.toEqual([row]);
+    await expect(controller.findAll(2)).resolves.toEqual([row]);
+    expect(service.findAll).toHaveBeenCalledWith(2);
   });
 });

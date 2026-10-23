@@ -20,17 +20,19 @@ export class QueueService {
   ) {}
 
   /**
-   * One promise per robot, in ascending displayId order. Each takes the
+   * One promise per robot on the floor, in ascending displayId order. Each takes the
    * robot's head command (deleted whether or not it parses) and resolves to
    * it, or to null when the queue is empty or the command does not parse.
    * Commands are not executed here. Inside a tick, pass its transaction.
    */
   async doNext(
+    floorId: number,
     manager?: EntityManager,
   ): Promise<Promise<NextCommand | null>[]> {
     const robots = manager?.getRepository(Robot) ?? this.robots;
     const commands = manager?.getRepository(QueuedCommand) ?? this.commands;
     const all = await robots.find({
+      where: { cell: { floor: { id: floorId } } },
       order: { displayId: 'ASC' },
       relations: { cell: true },
     });

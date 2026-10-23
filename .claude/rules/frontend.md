@@ -21,9 +21,13 @@ paths:
 
 - A `Reset All` button sits right after `Log`. Click → `window.confirm('Reset the entire floor?')`.
 - No → nothing is sent; a running engine keeps running (`Pause`).
-- Yes → `POST /floors/:id/reset`. The API pauses the engine at tick 0, deletes the floor's queued commands, robots and cells and every log entry, and rebuilds the floor as 5 x 5 all Open (same floor id).
+- Yes → `POST /floors/:id/reset`. The API pauses the engine and sets that floor's tick to 0, deletes the floor's queued commands, robots, cells, log entries and snapshots (other floors untouched), and rebuilds the floor as 5 x 5 all Open (same floor id).
 - Then the grid shows the new floor, the selection and queue panel clear, and the client re-reads `GET /engine`, so the button reads `Play`.
 - Failure → `Floor failed to reset.` shows, and `GET /engine` is still re-read so Play / Pause matches the server.
+
+## Delete Floor
+
+- A `Delete Floor` button sits right after `Reset All`. See `timeline.md`.
 
 ## Errors
 

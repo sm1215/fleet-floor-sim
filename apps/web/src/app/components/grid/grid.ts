@@ -13,6 +13,8 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
   catchError,
   EMPTY,
+  filter,
+  forkJoin,
   map,
   Observable,
   of,
@@ -25,8 +27,9 @@ import {
 import { Cell as CellModel } from '../../models/cell.model';
 import { Direction } from '../../models/direction';
 import { Floor, FloorSize } from '../../models/floor.model';
+import { QueuedCommand } from '../../models/queued-command.model';
 import { Robot } from '../../models/robot.model';
-import { SimulationApiService } from '../../services/simulation-api.service';
+import { SimulationApiService, toLoadedState } from '../../services/simulation-api.service';
 import { Cell } from '../cell/cell';
 
 const MAX_FLOOR_WIDTH = 500;
@@ -41,6 +44,14 @@ interface LoadedFloor {
   floor: Floor;
   cells: CellModel[];
   robots: Robot[];
+}
+
+/** What to show: a floor live (tick null) or at a past tick. */
+interface View {
+  floorId: number;
+  tick: number | null;
+  /** Already loaded; otherwise the live floor is read from `GET /floors`. */
+  floor?: Floor;
 }
 
 @Component({
@@ -59,10 +70,24 @@ export class Grid implements OnInit {
 
   readonly editMode = input(false);
   readonly selectedRobotId = input<number | null>(null);
-  /** The engine's current tick; each change reloads the robots. */
+  /** The engine's current tick; each change reloads the robots (live only). */
   readonly tick = input(0);
+  /** The floor to show; null → the first floor. */
+  readonly floorId = input<number | null>(null);
+  /** A past tick to show read-only; null = live (timeline.md). */
+  readonly viewTick = input<number | null>(null);
   readonly gridError = output<string>();
   readonly robotClicked = output<number>();
+  /** Every live floor shown, so App knows the floor id and refreshes its list. */
+  readonly floorShown = output<Floor>();
+  /** A past tick's state is shown; `historyQueue()` now answers for it. */
+  readonly historyShown = output();
+
+  /** Viewing a past tick: nothing on the grid can change the floor. */
+  protected readonly readOnly = computed(() => this.viewTick() !== null);
+  /** Each robot's queue at the viewed past tick; empty while live. */
+  private readonly historyQueues = signal(new Map<number, QueuedCommand[]>());
+  private readonly views = new Subject<View>();
 
   /** The last saved floor whose cells are shown. */
   protected readonly floor = signal<Floor | null>(null);
@@ -96,29 +121,60 @@ export class Grid implements OnInit {
   );
 
   private readonly tickChanges = toObservable(this.tick);
+  private readonly viewTickChanges = toObservable(this.viewTick);
+  private readonly floorIdChanges = toObservable(this.floorId);
 
   protected readonly robotsByCell = computed(
     () => new Map(this.robots().map((robot) => [robot.cellId, robot])),
   );
 
   ngOnInit(): void {
+    // switchMap: a newer view cancels an older one, so a late response never
+    // replaces what was asked for last.
+    this.views
+      .pipe(
+        switchMap((view) =>
+          this.load(view).pipe(
+            catchError(() => {
+              this.gridError.emit(SERVER_ERROR);
+              return EMPTY;
+            }),
+          ),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe();
+
     this.api
       .getFloors()
       .pipe(
-        switchMap((floors) =>
-          floors.length > 0
-            ? of(floors[0])
+        switchMap((floors) => {
+          const wanted = floors.find((f) => f.id === this.floorId()) ?? floors[0];
+          return wanted
+            ? of(wanted)
             : this.api
                 .floorCommand({ width: DEFAULT_SIZE, height: DEFAULT_SIZE })
-                .pipe(switchMap(() => this.currentFloor())),
-        ),
-        switchMap((floor) => this.withCells(floor)),
+                .pipe(switchMap(() => this.currentFloor()));
+        }),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
-        next: (loaded) => this.show(loaded),
+        next: (floor) => this.views.next({ floorId: floor.id, tick: this.viewTick(), floor }),
         error: () => this.gridError.emit(SERVER_ERROR),
       });
+
+    this.viewTickChanges.pipe(skip(1), takeUntilDestroyed(this.destroyRef)).subscribe((tick) => {
+      const floor = this.floor();
+      if (floor) this.views.next({ floorId: floor.id, tick });
+    });
+
+    this.floorIdChanges
+      .pipe(
+        skip(1),
+        filter((id): id is number => id !== null && id !== this.floor()?.id),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((floorId) => this.views.next({ floorId, tick: this.viewTick() }));
 
     // switchMap: a newer release cancels the earlier request, so a late
     // response can never overwrite newer values.
@@ -145,26 +201,30 @@ export class Grid implements OnInit {
     this.reloadRobotsOnTick();
   }
 
-  /** A tick can turn and move robots: reload them (skips the initial value). */
+  /** A tick can turn and move robots: reload them (skips the initial value; live only). */
   private reloadRobotsOnTick(): void {
     this.tickChanges
       .pipe(
         skip(1),
-        switchMap(() =>
-          this.api.getRobots().pipe(
+        filter(() => !this.readOnly() && this.floor() !== null),
+        switchMap(() => {
+          const floorId = this.floor()!.id;
+          return this.api.getRobots(floorId).pipe(
+            // A floor switch or a history view since the request wins.
+            filter(() => this.floor()?.id === floorId && !this.readOnly()),
             catchError(() => {
               this.gridError.emit(SERVER_ERROR);
               return EMPTY;
             }),
-          ),
-        ),
+          );
+        }),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe((robots) => this.robots.set(robots));
   }
 
   protected onSizeChange(): void {
-    if (!this.floor()) return;
+    if (!this.floor() || this.readOnly()) return;
     this.sizeChanges.next({ width: this.width(), height: this.height() });
   }
 
@@ -174,7 +234,7 @@ export class Grid implements OnInit {
    * a new robot facing North when none is selected.
    */
   protected onCellClick(cell: CellModel): void {
-    if (this.robotsByCell().has(cell.id)) return;
+    if (this.readOnly() || this.robotsByCell().has(cell.id)) return;
     if (this.editMode()) {
       this.api
         .obstacleCommand(cell.xPosition, cell.yPosition)
@@ -200,7 +260,7 @@ export class Grid implements OnInit {
         : this.api.placeCommand(cell.xPosition, cell.yPosition, Direction.North);
       place
         .pipe(
-          switchMap(() => this.api.getRobots()),
+          switchMap(() => this.api.getRobots(cell.floorId)),
           takeUntilDestroyed(this.destroyRef),
         )
         .subscribe({
@@ -222,6 +282,11 @@ export class Grid implements OnInit {
     );
   }
 
+  /** The robot's queue at the viewed past tick; empty while live or for an unknown robot. */
+  historyQueue(robotId: number): QueuedCommand[] {
+    return this.historyQueues().get(robotId) ?? [];
+  }
+
   /** The shown robot with this Id; commands address it by its displayId. */
   findRobot(id: number): Robot | undefined {
     return this.robots().find((robot) => robot.id === id);
@@ -232,9 +297,9 @@ export class Grid implements OnInit {
     this.robots.update((robots) => robots.filter((robot) => robot.id !== id));
   }
 
-  /** The single floor, as saved after a FLOOR command. */
-  private currentFloor(): Observable<Floor> {
-    return this.api.getFloors().pipe(map((floors) => floors[0]));
+  /** The shown floor as saved (e.g. after a FLOOR command), or the first floor. */
+  private currentFloor(id = this.floor()?.id): Observable<Floor> {
+    return this.api.getFloors().pipe(map((floors) => floors.find((f) => f.id === id) ?? floors[0]));
   }
 
   /** Loads cells, then robots: a resize can move robots to other cells. */
@@ -243,17 +308,41 @@ export class Grid implements OnInit {
       .getCells(floor.id)
       .pipe(
         switchMap((cells) =>
-          this.api.getRobots().pipe(map((robots) => ({ floor, cells, robots }))),
+          this.api.getRobots(floor.id).pipe(map((robots) => ({ floor, cells, robots }))),
         ),
       );
   }
 
+  /** Shows a view: the live floor, or a past tick read-only. */
+  private load({ floorId, tick, floor }: View): Observable<void> {
+    if (tick !== null) {
+      // The live robots give each past robot its live id (see toLoadedState).
+      return forkJoin([this.api.getFloorState(floorId, tick), this.api.getRobots(floorId)]).pipe(
+        map(([state, live]) => {
+          const liveIds = new Map(live.map((r) => [r.displayId, r.id]));
+          const { queues, ...loaded } = toLoadedState(floorId, state, liveIds);
+          this.show(loaded, false);
+          this.historyQueues.set(queues);
+          this.historyShown.emit();
+        }),
+      );
+    }
+    return (floor ? of(floor) : this.currentFloor(floorId)).pipe(
+      switchMap((live) => this.withCells(live)),
+      map((loaded) => this.show(loaded)),
+    );
+  }
+
   /** Shows a floor, its cells and robots together, so the grid never lays out stale cells. */
-  private show({ floor, cells, robots }: LoadedFloor): void {
+  private show({ floor, cells, robots }: LoadedFloor, live = true): void {
     this.floor.set(floor);
     this.cells.set(cells);
     this.robots.set(robots);
     this.syncSliders();
+    if (live) {
+      this.historyQueues.set(new Map());
+      this.floorShown.emit(floor);
+    }
   }
 
   private syncSliders(): void {

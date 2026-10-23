@@ -9,8 +9,12 @@ export class RobotService {
     @InjectRepository(Robot) private readonly repo: Repository<Robot>,
   ) {}
 
-  findAll(): Promise<Robot[]> {
-    return this.repo.find({ relations: { cell: true } });
+  /** One floor's robots, with their cells. */
+  findAll(floorId: number): Promise<Robot[]> {
+    return this.repo.find({
+      where: { cell: { floor: { id: floorId } } },
+      relations: { cell: true },
+    });
   }
 
   // REPORT placeholder, not exposed over HTTP. LEFT / RIGHT / MOVE are

@@ -3,6 +3,14 @@ import { Floor } from './floor.entity.js';
 import { LogEntry } from './log-entry.entity.js';
 import { QueuedCommand } from './queued-command.entity.js';
 import { Robot } from './robot.entity.js';
+import { TickHistory } from './tick-history.entity.js';
 
-export { Cell, Floor, LogEntry, QueuedCommand, Robot };
-export const entities = [Floor, Cell, Robot, QueuedCommand, LogEntry];
+export { Cell, Floor, LogEntry, QueuedCommand, Robot, TickHistory };
+export const entities = [
+  Floor,
+  Cell,
+  Robot,
+  QueuedCommand,
+  LogEntry,
+  TickHistory,
+];

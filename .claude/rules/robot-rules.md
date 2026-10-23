@@ -25,7 +25,7 @@ paths:
 ## Position
 
 - x/y come from the robot's cell (`xPosition`/`yPosition`) and are read-only.
-- `GET /robots` includes each robot's cell x/y.
+- `GET /robots?floorId=` returns that floor's robots, with each robot's cell x/y.
 
 ## Placement (enforced by both client and API)
 

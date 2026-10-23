@@ -1,5 +1,12 @@
 import { EntityManager, In } from 'typeorm';
-import { Cell, Floor, Robot } from '../../database/entities/index.js';
+import {
+  Cell,
+  Floor,
+  LogEntry,
+  QueuedCommand,
+  Robot,
+  TickHistory,
+} from '../../database/entities/index.js';
 import { planResize } from './floor.model.js';
 
 /** Fills a floor with Open cells, row by row from the origin. */
@@ -62,4 +69,30 @@ export async function resizeFloor(
     await cellRepo.delete({ id: In(plan.deleteCellIds) });
   }
   return true;
+}
+
+/**
+ * Deletes everything on a floor, children first: queued commands, robots,
+ * cells, log entries and snapshots. The floor row itself stays.
+ */
+export async function deleteFloorContents(
+  manager: EntityManager,
+  id: number,
+): Promise<void> {
+  const robotRepo = manager.getRepository(Robot);
+  const robotIds = (
+    await robotRepo.find({
+      select: { id: true },
+      where: { cell: { floor: { id } } },
+    })
+  ).map((r) => r.id);
+  if (robotIds.length > 0) {
+    await manager
+      .getRepository(QueuedCommand)
+      .delete({ robot: { id: In(robotIds) } });
+    await robotRepo.delete({ id: In(robotIds) });
+  }
+  await manager.getRepository(Cell).delete({ floor: { id } });
+  await manager.getRepository(LogEntry).delete({ floor: { id } });
+  await manager.getRepository(TickHistory).delete({ floor: { id } });
 }

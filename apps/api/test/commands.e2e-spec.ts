@@ -15,9 +15,10 @@ describe('Commands (e2e)', () => {
   let app: INestApplication<App>;
   const http = () => request(app.getHttpServer());
   const log = async () =>
-    ((await http().get('/log-entries').expect(200)).body as ApiLogEntry[]).map(
-      (e) => [e.action, e.params, e.result],
-    );
+    (
+      (await http().get('/log-entries?floorId=1').expect(200))
+        .body as ApiLogEntry[]
+    ).map((e) => [e.action, e.params, e.result]);
 
   beforeEach(async () => {
     const moduleRef = await Test.createTestingModule({

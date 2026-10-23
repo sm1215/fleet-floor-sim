@@ -31,3 +31,6 @@
 
 #### Scenario Runner instructions only specify that an OBSTACLE command should toggle on an OBSTACLE
 > I am adding the ability for OBSTACLE to be toggled on or off. The toggle and respective state should be recorded as well.
+
+#### While implementing the GOTO pathfinding, I'm choosing to omit supporting that command in the Scenario Runner
+> Been working at this project for a length of time now and that's something I would push against to be in a future update. Assuming the request prioritizes client-facing support over CLI tooling.

@@ -26,7 +26,8 @@ paths:
 ## Initial load
 
 - On init, `GET /floors`. If the list is empty, `POST /commands/floor { width: 5, height: 5 }`, then `GET /floors` again.
-  Otherwise use the first floor returned and set the UI (sliders and grid) to its values.
+  Otherwise use the floor whose id is the active `floorId` (from `GET /engine`), or the first floor returned, and set the UI (sliders and grid) to its values.
+- While viewing a past tick the grid is read-only: sliders disabled, cell clicks send nothing (`timeline.md`).
 
 ## Size sliders
 

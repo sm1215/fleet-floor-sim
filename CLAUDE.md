@@ -39,9 +39,10 @@ Only what is drawn in the diagram is stated here. Do not invent fields or relati
 | Cell          | Id (PK), Obstacle, XPosition, YPosition         |
 | Robot         | Id (PK), Direction (Int)                        |
 | QueuedCommand | Id (PK), Command, Params                        |
-| LogEntry      | Id (PK), Action, Params, Result                 |
+| LogEntry      | Id (PK), Action, Params, Result, Tick           |
+| TickHistory   | Id (PK), Tick, State                            |
 
-- FK ownership: Cell → Floor (`floor_id`), Robot → Cell (`cell_id`), QueuedCommand → Robot (`robot_id`). LogEntry has no FK.
+- FK ownership: Cell → Floor (`floor_id`), Robot → Cell (`cell_id`), QueuedCommand → Robot (`robot_id`), LogEntry → Floor (`floor_id`), TickHistory → Floor (`floor_id`). TickHistory has `Unique(floor_id, Tick)`. LogEntry.Tick, TickHistory and their Floor FKs are not in the diagram yet (added for the timeline, `timeline.md`).
 - Cell has `Unique(floor_id, XPosition, YPosition)`.
 - `Direction` is an int: 0 = N, 1 = E, 2 = S, 3 = W. Origin is bottom-left; N = +y.
 
@@ -120,4 +121,5 @@ Path-scoped rules in `.claude/rules/` load when working on matching files:
 - `engine.md` — `apps/api/src/engine/**`
 - `queue.md` — `apps/api/src/queue/**`
 - `scenario-runner.md` — `apps/api/src/scenario/**`, `scenarios/**`
+- `timeline.md` — `apps/api/src/history/**`, `src/engine/**`, `src/floor/**`, `apps/api/database/**`, `apps/web/src/app/components/timeline/**`, `components/grid/**`, `app.*`, `services/simulation-api.service.ts`
 - `log-entry.md` — `apps/api/**`, `apps/web/src/app/components/log-modal/**`, `apps/web/src/app/app.*`, `services/simulation-api.service.ts`

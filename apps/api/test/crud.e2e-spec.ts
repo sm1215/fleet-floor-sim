@@ -67,9 +67,9 @@ describe('Resource routes (e2e)', () => {
   });
 
   it('the removed routes changed nothing', async () => {
-    const robots = await http().get('/robots').expect(200);
+    const robots = await http().get('/robots?floorId=1').expect(200);
     expect(robots.body).toHaveLength(1);
-    const log = await http().get('/log-entries').expect(200);
+    const log = await http().get('/log-entries?floorId=1').expect(200);
     expect((log.body as { action: string }[]).map((e) => e.action)).toEqual([
       'FLOOR',
       'PLACE',
@@ -95,7 +95,7 @@ describe('Resource routes (e2e)', () => {
     const cell = await first('/cells');
     expect(cell).toMatchObject({ floor: { id: floor.id } });
 
-    const robot = await first('/robots');
+    const robot = await first('/robots?floorId=1');
     expect(robot).toMatchObject({
       displayId: 1,
       cell: { xPosition: 1, yPosition: 0 },
@@ -107,7 +107,9 @@ describe('Resource routes (e2e)', () => {
       { command: 'MOVE', robot: { id: robot.id } },
     ]);
 
-    expect(await first('/log-entries')).toMatchObject({ action: 'FLOOR' });
+    expect(await first('/log-entries?floorId=1')).toMatchObject({
+      action: 'FLOOR',
+    });
   });
 
   it('GET /robots/:id/queued-commands: 400 for a non-integer id, [] for a missing robot', async () => {

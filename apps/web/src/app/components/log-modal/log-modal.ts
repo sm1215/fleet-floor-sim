@@ -3,6 +3,8 @@ import {
   Component,
   ElementRef,
   inject,
+  input,
+  OnInit,
   output,
   signal,
   viewChild,
@@ -14,24 +16,29 @@ import { SimulationApiService } from '../../services/simulation-api.service';
   selector: 'app-log-modal',
   templateUrl: './log-modal.html',
 })
-export class LogModal {
+export class LogModal implements OnInit {
+  /** The viewed floor; only its log is shown. */
+  readonly floorId = input.required<number>();
   readonly closed = output();
 
   protected readonly entries = signal<LogEntry[]>([]);
 
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
 
+  private readonly api = inject(SimulationApiService);
+
   constructor() {
-    // App re-creates the modal on each open, so the log is fetched every time.
-    inject(SimulationApiService)
-      .getLogEntries()
-      .subscribe({
-        next: (entries) => this.entries.set(entries),
-        // The modal stays open, empty.
-        error: () => undefined,
-      });
     // showModal() gives Escape handling, focus management and an inert background.
     afterNextRender(() => this.dialog().nativeElement.showModal());
+  }
+
+  ngOnInit(): void {
+    // App re-creates the modal on each open, so the log is fetched every time.
+    this.api.getLogEntries(this.floorId()).subscribe({
+      next: (entries) => this.entries.set(entries),
+      // The modal stays open, empty.
+      error: () => undefined,
+    });
   }
 
   protected close(event?: Event): void {

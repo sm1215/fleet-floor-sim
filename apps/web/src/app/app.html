@@ -2,11 +2,16 @@
   <h1 class="sr-only">Fleet Floor Simulator</h1>
 
   <div class="area-top flex justify-center gap-3">
-    <app-button label="Step" [disabled]="running()" (pressed)="onStep()" />
-    <app-button [label]="running() ? 'Pause' : 'Play'" (pressed)="onPlayPause()" />
+    <app-button label="Step" [disabled]="running() || readOnly()" (pressed)="onStep()" />
+    <app-button
+      [label]="running() ? 'Pause' : 'Play'"
+      [disabled]="!running() && readOnly()"
+      (pressed)="onPlayPause()"
+    />
     <app-button
       [label]="editMode() ? 'Edit: On' : 'Edit: Off'"
       [highlighted]="editMode()"
+      [disabled]="readOnly()"
       (pressed)="onToggleEdit()"
     >
       <svg
@@ -30,15 +35,31 @@
       </svg>
     </app-button>
     <app-button label="Log" (pressed)="onOpenLog()" />
-    <app-button label="Reset All" (pressed)="onResetAll()" />
+    <app-button label="Reset All" [disabled]="readOnly()" (pressed)="onResetAll()" />
+    <app-button label="Delete Floor" [disabled]="readOnly()" (pressed)="onDeleteFloor()" />
   </div>
 
   <app-grid
     [editMode]="editMode()"
     [selectedRobotId]="selectedRobotId()"
     [tick]="currentTick()"
+    [floorId]="floorId()"
+    [viewTick]="viewTick()"
     (gridError)="addError($event)"
     (robotClicked)="onRobotClicked($event)"
+    (floorShown)="onFloorShown($event)"
+    (historyShown)="onHistoryShown()"
+  />
+
+  <app-timeline
+    class="area-timeline"
+    [currentTick]="currentTick()"
+    [floors]="floors()"
+    [floorId]="floorId()"
+    [viewTick]="viewTick()"
+    (viewTickChange)="onViewTickChange($event)"
+    (forked)="onFork($event)"
+    (floorSelected)="onFloorSelected($event)"
   />
 
   <div class="area-errors">
@@ -64,24 +85,38 @@
     }
   </div>
 
-  <app-queue-panel class="area-queue" [robotId]="selectedRobotId()" [commands]="queue()" />
+  <app-queue-panel
+    class="area-queue"
+    [robotId]="grid().findRobot(selectedRobotId() ?? 0)?.displayId ?? null"
+    [commands]="queue()"
+  />
 
   <div class="area-controls flex justify-center gap-3">
     <app-button
       label="Turn Left"
-      [disabled]="selectedRobotId() === null"
+      [disabled]="selectedRobotId() === null || readOnly()"
       (pressed)="onTurnLeft()"
     />
     <app-button
       label="Turn Right"
-      [disabled]="selectedRobotId() === null"
+      [disabled]="selectedRobotId() === null || readOnly()"
       (pressed)="onTurnRight()"
     />
-    <app-button label="Move" [disabled]="selectedRobotId() === null" (pressed)="onMove()" />
-    <app-button label="Delete" [disabled]="selectedRobotId() === null" (pressed)="onDelete()" />
+    <app-button
+      label="Move"
+      [disabled]="selectedRobotId() === null || readOnly()"
+      (pressed)="onMove()"
+    />
+    <app-button
+      label="Delete"
+      [disabled]="selectedRobotId() === null || readOnly()"
+      (pressed)="onDelete()"
+    />
   </div>
 </main>
 
 @if (logOpen()) {
-  <app-log-modal (closed)="onCloseLog()" />
+  @if (floorId(); as floorId) {
+    <app-log-modal [floorId]="floorId" (closed)="onCloseLog()" />
+  }
 }

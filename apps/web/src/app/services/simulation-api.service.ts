@@ -6,6 +6,7 @@ import { Cell } from '../models/cell.model';
 import { Direction } from '../models/direction';
 import { LogEntry } from '../models/log-entry.model';
 import { EngineState } from '../models/engine-state.model';
+import { FloorState } from '../models/floor-state.model';
 import { Floor, FloorSize } from '../models/floor.model';
 import { CommandName, QueuedCommand } from '../models/queued-command.model';
 import { Robot } from '../models/robot.model';
@@ -45,6 +46,60 @@ function toQueuedCommand({ robot, ...command }: ApiQueuedCommand): QueuedCommand
   return { ...command, robotId: robot.id };
 }
 
+/** A past floor state in the shapes the grid and queue panel render. */
+export interface LoadedState {
+  floor: Floor;
+  cells: Cell[];
+  robots: Robot[];
+  /** Each robot's queue by robot id, FIFO. */
+  queues: Map<number, QueuedCommand[]>;
+}
+
+/**
+ * Maps a `FloorState` for display only (timeline.md). Cell ids are
+ * `y * width + x + 1`; queue entries get ids 1..n in order.
+ *
+ * A replayed state's robot ids need not match the live ones (replay numbers
+ * new robots itself; a fork's past carries the source floor's ids), so each
+ * robot takes the live id of the robot with its displayId (`liveIds`:
+ * displayId → id). A robot that is no longer live gets `-displayId`.
+ */
+export function toLoadedState(
+  floorId: number,
+  state: FloorState,
+  liveIds = new Map<number, number>(),
+): LoadedState {
+  const cellId = (x: number, y: number) => y * state.width + x + 1;
+  const idOf = (displayId: number) => liveIds.get(displayId) ?? -displayId;
+  return {
+    floor: { id: floorId, width: state.width, height: state.height },
+    cells: state.cells.map(({ x, y, obstacle }) => ({
+      id: cellId(x, y),
+      obstacle,
+      xPosition: x,
+      yPosition: y,
+      floorId,
+    })),
+    robots: state.robots.map(({ displayId, direction, x, y }) => ({
+      id: idOf(displayId),
+      displayId,
+      direction,
+      cellId: cellId(x, y),
+      x,
+      y,
+    })),
+    queues: new Map(
+      state.robots.map((r) => {
+        const id = idOf(r.displayId);
+        return [
+          id,
+          r.queue.map((command, i) => ({ id: i + 1, command, params: null, robotId: id })),
+        ];
+      }),
+    ),
+  };
+}
+
 /** HTTP client for the simulation API. */
 @Injectable({ providedIn: 'root' })
 export class SimulationApiService {
@@ -55,7 +110,7 @@ export class SimulationApiService {
     return this.http.get<Floor[]>(`${this.api}/floors`);
   }
 
-  /** Empties the floor and the log, rebuilds it 5 x 5 all Open, and pauses the engine at tick 0. */
+  /** Empties the floor and its log, rebuilds it 5 x 5 all Open, and pauses the engine at tick 0. */
   resetFloor(id: number): Observable<Floor> {
     return this.http.post<Floor>(`${this.api}/floors/${id}/reset`, {});
   }
@@ -67,9 +122,10 @@ export class SimulationApiService {
       .pipe(map((cells) => cells.filter((cell) => cell.floor.id === floorId).map(toCell)));
   }
 
-  getRobots(): Observable<Robot[]> {
+  /** One floor's robots. */
+  getRobots(floorId: number): Observable<Robot[]> {
     return this.http
-      .get<ApiRobot[]>(`${this.api}/robots`)
+      .get<ApiRobot[]>(`${this.api}/robots`, { params: { floorId } })
       .pipe(map((robots) => robots.map(toRobot)));
   }
 
@@ -105,9 +161,33 @@ export class SimulationApiService {
     return this.command('delete', { rId: rId(displayId) });
   }
 
-  /** Every log entry, ascending id. */
-  getLogEntries(): Observable<LogEntry[]> {
-    return this.http.get<LogEntry[]>(`${this.api}/log-entries`);
+  /** One floor's log entries, ascending id. */
+  getLogEntries(floorId: number): Observable<LogEntry[]> {
+    return this.http.get<LogEntry[]>(`${this.api}/log-entries`, { params: { floorId } });
+  }
+
+  /** Makes the floor active; the engine pauses. */
+  selectFloor(floorId: number): Observable<EngineState> {
+    return this.http.post<EngineState>(`${this.api}/engine/floor`, { floorId });
+  }
+
+  /** The floor at a past (or the current) tick. */
+  getFloorState(floorId: number, tick: number): Observable<FloorState> {
+    return this.http.get<FloorState>(`${this.api}/floors/${floorId}/history`, {
+      params: { tick },
+    });
+  }
+
+  /** Fork From Here: a new floor matching this one up to `tick`; emits its id. */
+  forkFloor(floorId: number, tick: number): Observable<number> {
+    return this.http
+      .post<{ floorId: number }>(`${this.api}/floors/${floorId}/fork`, { tick })
+      .pipe(map((res) => res.floorId));
+  }
+
+  /** Deletes the floor and everything on it; the engine pauses. */
+  deleteFloor(floorId: number): Observable<EngineState> {
+    return this.http.post<EngineState>(`${this.api}/floors/${floorId}/delete`, {});
   }
 
   getEngine(): Observable<EngineState> {

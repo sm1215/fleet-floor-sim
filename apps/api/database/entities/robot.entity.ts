@@ -13,8 +13,8 @@ export class Robot {
   @PrimaryGeneratedColumn()
   id: number;
 
-  /** Shown as `R<displayId>`; separate from the primary key. */
-  @Column({ name: 'display_id', type: 'integer', unique: true })
+  /** Shown as `R<displayId>`; separate from the primary key. Unique per floor (Engine). */
+  @Column({ name: 'display_id', type: 'integer' })
   displayId: number;
 
   @Column({ type: 'integer' })

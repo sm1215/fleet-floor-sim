@@ -13,7 +13,9 @@ describe('LogModal', () => {
     { id: 1, action: 'PLACE', params: 'R1 2, 3, NORTH', result: 'OK' },
     { id: 2, action: 'TICK', params: '1', result: 'R1 2,4,NORTH\nR2 0,0,EAST' },
   ];
-  let api: { getLogEntries: ReturnType<typeof vi.fn<() => Observable<LogEntry[]>>> };
+  let api: {
+    getLogEntries: ReturnType<typeof vi.fn<(floorId: number) => Observable<LogEntry[]>>>;
+  };
 
   beforeEach(() => {
     api = { getLogEntries: vi.fn(() => of(entries)) };
@@ -24,6 +26,7 @@ describe('LogModal', () => {
 
   async function setup() {
     const fixture = TestBed.createComponent(LogModal);
+    fixture.componentRef.setInput('floorId', 3);
     await fixture.whenStable();
     const closed = vi.fn();
     fixture.componentInstance.closed.subscribe(closed);
@@ -40,6 +43,11 @@ describe('LogModal', () => {
   it('fetches the log once on create', async () => {
     await setup();
     expect(api.getLogEntries).toHaveBeenCalledTimes(1);
+  });
+
+  it('requests the log for the given floorId', async () => {
+    await setup();
+    expect(api.getLogEntries).toHaveBeenCalledWith(3);
   });
 
   it('renders one line per entry, in order, as "action params: result"', async () => {

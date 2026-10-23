@@ -85,4 +85,28 @@ describe('Floor persistence (e2e)', () => {
       await app.close();
     }
   });
+
+  it('POST /floors/:id/delete → 200; GET /floors no longer lists it; unknown → 404', async () => {
+    const app = await startApp(newFile());
+    try {
+      const server = app.getHttpServer();
+      await request(server).post('/commands/floor').send({}).expect(200);
+      const res = await request(server)
+        .post('/floors/1/fork')
+        .send({ tick: 0 });
+      const forked = (res.body as { floorId: number }).floorId;
+      const state = await request(server)
+        .post(`/floors/${forked}/delete`)
+        .expect(200);
+      expect(state.body).toMatchObject({ floorId: 1, currentTick: 0 });
+      const floors = await request(server).get('/floors').expect(200);
+      expect((floors.body as { id: number }[]).map((f) => f.id)).toEqual([1]);
+      const missing = await request(server)
+        .post('/floors/9999/delete')
+        .expect(404);
+      expect(missing.body).toMatchObject({ message: 'Floor 9999 not found' });
+    } finally {
+      await app.close();
+    }
+  });
 });

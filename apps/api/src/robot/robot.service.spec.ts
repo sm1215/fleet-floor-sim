@@ -20,9 +20,12 @@ describe('RobotService', () => {
     service = moduleRef.get(RobotService);
   });
 
-  it('finds all with the cell relation', async () => {
-    await expect(service.findAll()).resolves.toEqual([row]);
-    expect(repo.find).toHaveBeenCalledWith({ relations: { cell: true } });
+  it("finds one floor's robots with the cell relation", async () => {
+    await expect(service.findAll(2)).resolves.toEqual([row]);
+    expect(repo.find).toHaveBeenCalledWith({
+      where: { cell: { floor: { id: 2 } } },
+      relations: { cell: true },
+    });
   });
 
   it('reportState is not implemented yet', async () => {

@@ -1,8 +1,9 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Observable, of, Subject, throwError } from 'rxjs';
 import { Cell } from '../../models/cell.model';
 import { Direction } from '../../models/direction';
+import { FloorState } from '../../models/floor-state.model';
 import { Floor, FloorSize } from '../../models/floor.model';
 import { Robot } from '../../models/robot.model';
 import { SimulationApiService } from '../../services/simulation-api.service';
@@ -24,6 +25,19 @@ function makeCells(floor: Floor): Cell[] {
   return cells;
 }
 
+/** What the mocked `GET /floors/:id/history` returns. */
+const PAST_STATE: FloorState = {
+  width: 2,
+  height: 2,
+  cells: [
+    { x: 0, y: 0, obstacle: false },
+    { x: 1, y: 0, obstacle: true },
+    { x: 0, y: 1, obstacle: false },
+    { x: 1, y: 1, obstacle: false },
+  ],
+  robots: [{ id: 9, displayId: 3, x: 0, y: 1, direction: Direction.East, queue: ['MOVE', 'LEFT'] }],
+};
+
 function robot(id: number, cellId: number, x: number, y: number, direction = Direction.North) {
   return { id, displayId: id, direction, cellId, x, y };
 }
@@ -37,7 +51,10 @@ describe('Grid', () => {
     resetFloor: ReturnType<typeof vi.fn<(id: number) => Observable<Floor>>>;
     getCells: ReturnType<typeof vi.fn<(floorId: number) => Observable<Cell[]>>>;
     obstacleCommand: ReturnType<typeof vi.fn<(x: number, y: number) => Observable<void>>>;
-    getRobots: ReturnType<typeof vi.fn<() => Observable<Robot[]>>>;
+    getRobots: ReturnType<typeof vi.fn<(floorId: number) => Observable<Robot[]>>>;
+    getFloorState: ReturnType<
+      typeof vi.fn<(floorId: number, tick: number) => Observable<FloorState>>
+    >;
     placeCommand: ReturnType<
       typeof vi.fn<
         (x: number, y: number, direction: Direction, displayId?: number) => Observable<void>
@@ -46,6 +63,10 @@ describe('Grid', () => {
   };
   // The robots as the mocked API currently stores them.
   let robots: Robot[];
+  // Floors after `server`, and their robots by floor id.
+  let others: Floor[];
+  let otherRobots: Map<number, Robot[]>;
+  const floorById = (id: number) => [server, ...others].find((f) => f?.id === id) ?? null;
   // Ids of the cells the mocked API stores as Obstacles.
   let obstacleIds: number[];
   const cellIdAt = (x: number, y: number) =>
@@ -53,9 +74,11 @@ describe('Grid', () => {
 
   beforeEach(() => {
     server = null;
+    others = [];
+    otherRobots = new Map();
     obstacleIds = [];
     api = {
-      getFloors: vi.fn(() => of(server ? [server] : [])),
+      getFloors: vi.fn(() => of(server ? [server, ...others] : others)),
       floorCommand: vi.fn((size: FloorSize) => {
         server = { id: server?.id ?? 1, ...size };
         return of(undefined);
@@ -65,13 +88,14 @@ describe('Grid', () => {
         obstacleIds = [];
         return of((server = { id, width: 5, height: 5 }));
       }),
-      getCells: vi.fn(() =>
-        of(
-          server
-            ? makeCells(server).map((c) => ({ ...c, obstacle: obstacleIds.includes(c.id) }))
+      getCells: vi.fn((floorId: number) => {
+        const floor = floorById(floorId);
+        return of(
+          floor
+            ? makeCells(floor).map((c) => ({ ...c, obstacle: obstacleIds.includes(c.id) }))
             : [],
-        ),
-      ),
+        );
+      }),
       obstacleCommand: vi.fn((x: number, y: number) => {
         const id = cellIdAt(x, y);
         obstacleIds = obstacleIds.includes(id)
@@ -79,7 +103,10 @@ describe('Grid', () => {
           : [...obstacleIds, id];
         return of(undefined);
       }),
-      getRobots: vi.fn(() => of(robots)),
+      getRobots: vi.fn((floorId: number) =>
+        of(floorId === server?.id ? robots : (otherRobots.get(floorId) ?? [])),
+      ),
+      getFloorState: vi.fn(() => of(PAST_STATE)),
       // A new robot gets displayId 40 (id 40); an existing one moves and turns.
       placeCommand: vi.fn((x: number, y: number, direction: Direction, displayId?: number) => {
         const moved = robot(displayId ?? 40, cellIdAt(x, y), x, y, direction);
@@ -668,6 +695,165 @@ describe('Grid', () => {
       fixture.componentRef.setInput('tick', 1);
       await fixture.whenStable();
       expect(errors).toEqual([SERVER_ERROR]);
+    });
+  });
+
+  describe('floors and history', () => {
+    const second: Floor = { id: 2, width: 3, height: 2 };
+    const cellEl = (el: HTMLElement, x: number, y: number) =>
+      el.querySelector<HTMLElement>(`app-cell[data-x="${x}"][data-y="${y}"] .cell`)!;
+    const robotEl = (el: HTMLElement, x: number, y: number) =>
+      el.querySelector<HTMLElement>(`app-cell[data-x="${x}"][data-y="${y}"] app-robot`);
+
+    beforeEach(() => {
+      others = [second];
+      otherRobots = new Map([[2, [robot(5, 4, 0, 1)]]]);
+    });
+
+    async function renderWith(inputs: { floorId?: number | null; viewTick?: number | null }) {
+      server = { id: 1, width: 3, height: 3 };
+      const fixture = TestBed.createComponent(Grid);
+      for (const [name, value] of Object.entries(inputs)) {
+        fixture.componentRef.setInput(name, value);
+      }
+      const shown: Floor[] = [];
+      fixture.componentInstance.floorShown.subscribe((f) => shown.push(f));
+      let historyShown = 0;
+      fixture.componentInstance.historyShown.subscribe(() => historyShown++);
+      await fixture.whenStable();
+      const el = fixture.nativeElement as HTMLElement;
+      return { fixture, el, shown, historyShown: () => historyShown };
+    }
+
+    async function set(fixture: ComponentFixture<Grid>, name: string, value: unknown) {
+      fixture.componentRef.setInput(name, value);
+      await fixture.whenStable();
+    }
+
+    it('init shows the floor matching floorId when it is not the first', async () => {
+      const { el, shown } = await renderWith({ floorId: 2 });
+      expect(el.querySelectorAll('app-cell')).toHaveLength(6);
+      expect(api.getCells).toHaveBeenLastCalledWith(2);
+      expect(api.getRobots).toHaveBeenLastCalledWith(2);
+      expect(robotEl(el, 0, 1)).not.toBeNull();
+      expect(shown).toEqual([second]);
+    });
+
+    it("floorId change loads that floor's cells and robots", async () => {
+      const { fixture, el, shown } = await renderWith({ floorId: 1 });
+      expect(el.querySelectorAll('app-cell')).toHaveLength(9);
+      await set(fixture, 'floorId', 2);
+      expect(el.querySelectorAll('app-cell')).toHaveLength(6);
+      expect(api.getRobots).toHaveBeenLastCalledWith(2);
+      expect(shown.map((f) => f.id)).toEqual([1, 2]);
+    });
+
+    it('viewTick 5 requests getFloorState(floorId, 5) and renders its cells, obstacles and robots', async () => {
+      const { fixture, el, historyShown } = await renderWith({ floorId: 1 });
+      await set(fixture, 'viewTick', 5);
+      expect(api.getFloorState).toHaveBeenCalledExactlyOnceWith(1, 5);
+      expect(el.querySelectorAll('app-cell')).toHaveLength(4);
+      expect(cellEl(el, 1, 0).classList).toContain('obstacle');
+      expect(robotEl(el, 0, 1)!.querySelector('.robot-id')!.textContent!.trim()).toBe('R3');
+      expect(robotEl(el, 0, 1)!.querySelector('.robot-arrow')!.textContent!.trim()).toBe('>');
+      expect(historyShown()).toBe(1);
+    });
+
+    it('a newer viewTick cancels an older history request', async () => {
+      const first = new Subject<FloorState>();
+      api.getFloorState.mockReturnValueOnce(first);
+      const { fixture, el } = await renderWith({ floorId: 1 });
+      await set(fixture, 'viewTick', 2);
+      await set(fixture, 'viewTick', 5);
+      first.next({ width: 1, height: 1, cells: [{ x: 0, y: 0, obstacle: false }], robots: [] });
+      await fixture.whenStable();
+      expect(el.querySelectorAll('app-cell')).toHaveLength(4);
+    });
+
+    it.each([true, false])(
+      'read-only (edit mode %s): cell click sends nothing; sliders are disabled',
+      async (editMode) => {
+        const { fixture, el } = await renderWith({ floorId: 1, viewTick: 5 });
+        await set(fixture, 'editMode', editMode);
+        cellEl(el, 0, 0).click();
+        await fixture.whenStable();
+        expect(api.obstacleCommand).not.toHaveBeenCalled();
+        expect(api.placeCommand).not.toHaveBeenCalled();
+        expect(slider(el, 'Width').disabled).toBe(true);
+        expect(slider(el, 'Height').disabled).toBe(true);
+      },
+    );
+
+    it('read-only: robot click still emits robotClicked', async () => {
+      const { fixture, el } = await renderWith({ floorId: 1, viewTick: 5 });
+      const clicked: number[] = [];
+      fixture.componentInstance.robotClicked.subscribe((id) => clicked.push(id));
+      robotEl(el, 0, 1)!.click();
+      // R3 is not on the live floor, so it gets the history-only id -3.
+      expect(clicked).toEqual([-3]);
+    });
+
+    it('read-only: a tick change does not reload robots', async () => {
+      const { fixture } = await renderWith({ floorId: 1, viewTick: 5 });
+      api.getRobots.mockClear();
+      await set(fixture, 'tick', 7);
+      expect(api.getRobots).not.toHaveBeenCalled();
+    });
+
+    it('viewTick back to null reloads the live floor', async () => {
+      const { fixture, el, shown } = await renderWith({ floorId: 1, viewTick: 5 });
+      expect(el.querySelectorAll('app-cell')).toHaveLength(4);
+      await set(fixture, 'viewTick', null);
+      expect(el.querySelectorAll('app-cell')).toHaveLength(9);
+      expect(slider(el, 'Width').disabled).toBe(false);
+      expect(shown.at(-1)).toEqual(server);
+    });
+
+    it('a tick reload that answers after a floor switch is ignored', async () => {
+      const { fixture, el } = await renderWith({ floorId: 1 });
+      const late = new Subject<Robot[]>();
+      api.getRobots.mockReturnValueOnce(late);
+      fixture.componentRef.setInput('tick', 1);
+      fixture.componentRef.setInput('floorId', 2);
+      await fixture.whenStable();
+      late.next([robot(77, 1, 0, 0)]);
+      await fixture.whenStable();
+      expect(el.querySelectorAll('app-cell')).toHaveLength(6);
+      expect(el.querySelectorAll('app-robot')).toHaveLength(1);
+      expect(robotEl(el, 0, 1)).not.toBeNull();
+    });
+
+    it("historyQueue returns the robot's queue at that tick", async () => {
+      const { fixture } = await renderWith({ floorId: 1, viewTick: 5 });
+      const grid = fixture.componentInstance;
+      expect(grid.historyQueue(-3).map((q) => q.command)).toEqual(['MOVE', 'LEFT']);
+      expect(grid.historyQueue(1)).toEqual([]);
+      await set(fixture, 'viewTick', null);
+      expect(grid.historyQueue(-3)).toEqual([]);
+    });
+
+    it("a past robot takes the live id of the robot with its displayId (the state's id can differ)", async () => {
+      // Live R3 is robot 50; the replayed state calls it robot 9.
+      robots = [{ id: 50, displayId: 3, direction: Direction.North, cellId: 1, x: 0, y: 0 }];
+      const { fixture, el } = await renderWith({ floorId: 1, viewTick: 5 });
+      expect(api.getRobots).toHaveBeenLastCalledWith(1);
+      const clicked: number[] = [];
+      fixture.componentInstance.robotClicked.subscribe((id) => clicked.push(id));
+      robotEl(el, 0, 1)!.click();
+      expect(clicked).toEqual([50]);
+      expect(fixture.componentInstance.historyQueue(50).map((q) => q.command)).toEqual([
+        'MOVE',
+        'LEFT',
+      ]);
+      expect(fixture.componentInstance.historyQueue(9)).toEqual([]);
+    });
+
+    it('a selected live robot stays selected in the past view', async () => {
+      robots = [{ id: 50, displayId: 3, direction: Direction.North, cellId: 1, x: 0, y: 0 }];
+      const { fixture, el } = await renderWith({ floorId: 1 });
+      await set(fixture, 'selectedRobotId', 50);
+      await set(fixture, 'viewTick', 5);
+      expect(robotEl(el, 0, 1)!.querySelector('.robot')!.classList).toContain('border-green-300');
     });
   });
 });

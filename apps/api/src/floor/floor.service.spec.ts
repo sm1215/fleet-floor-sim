@@ -7,6 +7,7 @@ import {
   LogEntry,
   QueuedCommand,
   Robot,
+  TickHistory,
 } from '../../database/entities/index.js';
 import { sqliteTestDb } from '../../test/sqlite-test-db.js';
 import { EngineService } from '../engine/engine.service.js';
@@ -121,8 +122,8 @@ describe('FloorService', () => {
       const floor = await create(5, 5);
       const logs = dataSource.getRepository(LogEntry);
       await logs.save([
-        { action: 'PLACE', params: '', result: 'ok' },
-        { action: 'MOVE', params: '', result: 'ok' },
+        { action: 'PLACE', params: '', result: 'ok', tick: 0, floor },
+        { action: 'MOVE', params: '', result: 'ok', tick: 0, floor },
       ]);
       await service.reset(floor.id);
       expect(await logs.count()).toBe(0);
@@ -138,7 +139,7 @@ describe('FloorService', () => {
 
     it('pauses the engine and sets the tick to 0', async () => {
       const floor = await create(5, 5);
-      engine.currentTick = 4;
+      engine.setTick(floor.id, 4);
       engine.toggle();
       await service.reset(floor.id);
       expect(engine.getState()).toMatchObject({
@@ -164,6 +165,150 @@ describe('FloorService', () => {
 
     it('throws 404 for a missing floor', async () => {
       await expect(service.reset(999)).rejects.toThrow(NotFoundException);
+    });
+  });
+  describe('per floor', () => {
+    /** A second floor with a robot, a queued command, a log entry and a snapshot. */
+    async function otherFloor(): Promise<Floor> {
+      const floor = await dataSource
+        .getRepository(Floor)
+        .save({ width: 2, height: 2 });
+      const cell = await cells.save({
+        obstacle: false,
+        xPosition: 0,
+        yPosition: 0,
+        floor,
+      });
+      const robot = await robots.save({ displayId: 1, direction: 0, cell });
+      await dataSource
+        .getRepository(QueuedCommand)
+        .save({ command: 'MOVE', params: null, robot });
+      await dataSource.getRepository(LogEntry).save({
+        action: 'TICK',
+        params: '3',
+        result: 'EMPTY',
+        tick: 3,
+        floor,
+      });
+      await dataSource
+        .getRepository(TickHistory)
+        .save({ tick: 0, state: '{}', floor });
+      return floor;
+    }
+    const countOn = async (floorId: number) => ({
+      cells: await cells.countBy({ floor: { id: floorId } }),
+      robots: await robots.countBy({ cell: { floor: { id: floorId } } }),
+      queued: await dataSource
+        .getRepository(QueuedCommand)
+        .countBy({ robot: { cell: { floor: { id: floorId } } } }),
+      log: await dataSource
+        .getRepository(LogEntry)
+        .countBy({ floor: { id: floorId } }),
+      snapshots: await dataSource
+        .getRepository(TickHistory)
+        .countBy({ floor: { id: floorId } }),
+    });
+
+    it("reset clears only that floor's log entries and snapshots; another floor's are kept", async () => {
+      const floor = await create(5, 5);
+      await engine.step();
+      const other = await otherFloor();
+      await service.reset(floor.id);
+      expect(await countOn(floor.id)).toEqual({
+        cells: 25,
+        robots: 0,
+        queued: 0,
+        log: 0,
+        snapshots: 0,
+      });
+      expect(await countOn(other.id)).toEqual({
+        cells: 1,
+        robots: 1,
+        queued: 1,
+        log: 1,
+        snapshots: 1,
+      });
+    });
+
+    it("reset sets only that floor's tick to 0", async () => {
+      const floor = await create(5, 5);
+      const other = await otherFloor();
+      engine.setTick(floor.id, 4);
+      engine.setTick(other.id, 3);
+      await service.reset(floor.id);
+      expect(engine.tickOf(floor.id)).toBe(0);
+      expect(engine.tickOf(other.id)).toBe(3);
+    });
+
+    it("deleteFloor removes the floor's cells, robots, queues, log entries and snapshots; other floors are untouched", async () => {
+      const floor = await create(5, 5);
+      const other = await otherFloor();
+      await engine.place(undefined, 1, 1, 0);
+      await engine.queue(1, ['MOVE']);
+      await engine.step();
+      await expect(engine.deleteFloor(floor.id)).resolves.toEqual({
+        ok: true,
+      });
+      expect(await countOn(floor.id)).toEqual({
+        cells: 0,
+        robots: 0,
+        queued: 0,
+        log: 0,
+        snapshots: 0,
+      });
+      expect(
+        await dataSource.getRepository(Floor).existsBy({ id: floor.id }),
+      ).toBe(false);
+      expect(await countOn(other.id)).toEqual({
+        cells: 1,
+        robots: 1,
+        queued: 1,
+        log: 1,
+        snapshots: 1,
+      });
+    });
+
+    it('deleteFloor of the active floor selects the lowest remaining id', async () => {
+      const floor = await create(5, 5);
+      const second = await otherFloor();
+      const third = await otherFloor();
+      engine.setTick(second.id, 3);
+      await engine.selectFloor(third.id);
+      await engine.deleteFloor(third.id);
+      expect(engine.getState()).toMatchObject({
+        floorId: floor.id,
+        currentTick: 0,
+      });
+      await engine.deleteFloor(floor.id);
+      expect(engine.getState()).toMatchObject({
+        floorId: second.id,
+        currentTick: 3,
+      });
+    });
+
+    it('deleteFloor of the last floor creates a 5x5 Open floor and makes it active at tick 0', async () => {
+      const floor = await create(3, 3);
+      await engine.step();
+      engine.toggle();
+      await engine.deleteFloor(floor.id);
+      const floors = await dataSource.getRepository(Floor).find();
+      expect(floors).toHaveLength(1);
+      expect(floors[0]).toMatchObject({ width: 5, height: 5 });
+      expect(floors[0].id).not.toBe(floor.id);
+      expect(engine.getState()).toMatchObject({
+        floorId: floors[0].id,
+        currentTick: 0,
+        running: false,
+      });
+      expect(await countOn(floors[0].id)).toMatchObject({ cells: 25, log: 1 });
+    });
+
+    it('deleteFloor of an unknown floor is ignored', async () => {
+      await create(5, 5);
+      await expect(engine.deleteFloor(999)).resolves.toEqual({
+        ok: false,
+        reason: 'Floor 999 not found',
+      });
     });
   });
 });

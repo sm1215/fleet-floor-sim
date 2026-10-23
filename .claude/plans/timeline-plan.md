@@ -1,0 +1,20 @@
+## timeline plan
+- Add a path scoped rules file that dictates the following behavior for an extension to the floor's existing functionality.
+- This should be created as a separate component with that respects the rules file.
+- Add a timeline scrubber under the grid.
+- The scrubber should be a numerical slider with a minimum of 0 and a dynamic maximum that changes to reflect the engine's currentTick.
+- The scrubber should automatically move to match the currentTick unless the user interacts with it.
+- Add a text input that requires numerical input to the right of the scubber. If a user types a number here, change the slider to match it. If the user changes the scrubber, update the number here to match the scubber.
+- When the user changes the value, the floor's state should reflect the previous state of the floor at the chosen tick.
+- Adapt the database to preserve the history as needed. Create a new table to store snapshots called tickHistory. Each row in tickHistory should have a Foreign Key constraint that corresponds to its floor_id.
+- Create a variable in the engine called snapshotFrequency. Set it to 10. At the start of each Tick in the engine if we are on a tick that matches an interval of snapshotFrequency, record the current state of the floor size, all cells, their obstacles, all robots and their facing direction.
+- To rebuild the floor's history, use a hybrid approach of Event Sourcing by reading the LogEntry table and a snapshotting approach that stores snapshots of the floor's current state as well as all things on the floor, such as cells, their state, robots and their state as well.
+- When reconstructing a past state, load the closest snapshot to that state and then replay log events until we are at that tick. Example: We are on tick 90. The user goes back to tick 75. Load the snapshot from 70 and then replay the log entries to get to 75.
+- When the user is viewing a previous state, the entire floor should become read-only. Disable any UI that would normally allow the state to be changed until the slider is back on the currentTick.
+- Add a button to the right of the slider called "Fork From Here"/
+- The Fork button should create a new separate floor whose history is identical up to the currentTick on the scrubber.
+- The additional floor should be able to be changed independently.
+- The LogEntry table should be adapted to reference a foreign key to the floor_id each entry belongs to.
+- Add a dropdown to the right of the Fork button that displays a list of all available floors. When the user changes the dropdown, change the loaded floor to match.
+- Ensure the Reset All button functionality at the top of the page only resets the currently viewed floor.
+- Add a Delete Floor button next to the Reset All button that deletes the currently viewed floor.

@@ -1,16 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
-import {
-  Cell,
-  Floor,
-  LogEntry,
-  QueuedCommand,
-  Robot,
-} from '../../database/entities/index.js';
+import { DataSource, EntityManager, Repository } from 'typeorm';
+import { Floor } from '../../database/entities/index.js';
 import { EngineService } from '../engine/engine.service.js';
 import { WriteLock } from '../shared/write-lock.js';
-import { insertOpenCells } from './floor-writes.js';
+import { deleteFloorContents, insertOpenCells } from './floor-writes.js';
 import { DEFAULT_FLOOR_SIZE } from './floor.model.js';
 
 /** Reads and Reset. Create and resize go through POST /commands/floor. */
@@ -24,30 +18,17 @@ export class FloorService {
   ) {}
 
   /**
-   * Pauses the engine at tick 0, then empties the floor (queued commands,
-   * robots, cells) and the whole log, and rebuilds it as an all-Open
-   * DEFAULT_FLOOR_SIZE square. The floor keeps its id.
+   * Pauses the engine and sets this floor's tick to 0, then empties the floor
+   * (queued commands, robots, cells, log entries, snapshots) and rebuilds it
+   * as an all-Open DEFAULT_FLOOR_SIZE square. The floor keeps its id; other
+   * floors are untouched.
    */
   async reset(id: number): Promise<Floor> {
     await this.findOne(id);
     // Taken after engine.reset(): that waits for an in-flight tick, which needs the lock.
-    await this.engine.reset();
+    await this.engine.reset(id);
     await this.write(async (manager) => {
-      const robotRepo = manager.getRepository(Robot);
-      const robotIds = (
-        await robotRepo.find({
-          select: { id: true },
-          where: { cell: { floor: { id } } },
-        })
-      ).map((r) => r.id);
-      if (robotIds.length > 0) {
-        await manager
-          .getRepository(QueuedCommand)
-          .delete({ robot: { id: In(robotIds) } });
-        await robotRepo.delete({ id: In(robotIds) });
-      }
-      await manager.getRepository(Cell).delete({ floor: { id } });
-      await manager.getRepository(LogEntry).clear();
+      await deleteFloorContents(manager, id);
       const floor = await manager.getRepository(Floor).save({
         id,
         width: DEFAULT_FLOOR_SIZE,
@@ -64,7 +45,7 @@ export class FloorService {
   }
 
   findAll(): Promise<Floor[]> {
-    return this.repo.find();
+    return this.repo.find({ order: { id: 'ASC' } });
   }
 
   private async findOne(id: number): Promise<Floor> {

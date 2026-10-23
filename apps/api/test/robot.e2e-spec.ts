@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
+import { DataSource } from 'typeorm';
+import { Cell, Floor, Robot } from '../database/entities/index.js';
 import { featureModules } from './../src/app.module.js';
 import { sqliteTestDb } from './sqlite-test-db.js';
 
@@ -39,7 +41,7 @@ describe('Robots (e2e)', () => {
   }
 
   const robots = async () =>
-    (await http().get('/robots').expect(200)).body as ApiRobot[];
+    (await http().get('/robots?floorId=1').expect(200)).body as ApiRobot[];
   const place = (body: object) => http().post('/commands/place').send(body);
 
   // A fresh DB file per test; the restart test reopens the same file.
@@ -138,5 +140,25 @@ describe('Robots (e2e)', () => {
         },
       },
     ]);
+  });
+  it("GET /robots?floorId= returns only that floor's robots", async () => {
+    await http().post('/commands/floor').send({ width: 2, height: 1 });
+    await place({ x: 0, y: 0, direction: 'NORTH' }).expect(200);
+    const db = app.get(DataSource);
+    const other = await db.getRepository(Floor).save({ width: 1, height: 1 });
+    const cell = await db.getRepository(Cell).save({
+      obstacle: false,
+      xPosition: 0,
+      yPosition: 0,
+      floor: other,
+    });
+    await db.getRepository(Robot).save({ displayId: 1, direction: 2, cell });
+
+    const mine = await robots();
+    expect(mine.map((r) => r.direction)).toEqual([0]);
+    const theirs = (await http().get(`/robots?floorId=${other.id}`).expect(200))
+      .body as ApiRobot[];
+    expect(theirs.map((r) => r.direction)).toEqual([2]);
+    await http().get('/robots').expect(400);
   });
 });

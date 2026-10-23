@@ -11,7 +11,7 @@ paths:
 ## Location
 
 - Entries are `LogEntry` rows (`action`, `params`, `result`), written through `LogEntryService` (`apps/api/src/log-entry`).
-- There is no floor FK. Only one floor exists at a time, and Reset clears the log.
+- Each entry belongs to a floor (`floor_id`) and has a `tick` (the floor's `currentTick` when written; see `timeline.md`). Reset clears only that floor's log.
 
 ## When to log
 
@@ -19,7 +19,7 @@ Write one entry after each successful state change. Ignored or failed requests a
 
 The Engine logs every successful command it executes (FLOOR, OBSTACLE, PLACE, QUEUE, DELETE) and each tick, in-process via `LogEntryService`. Controllers don't log.
 
-- Every change goes through `POST /commands/*`. The resource routes are read-only and limited to what the web uses: `GET /floors`, `/cells`, `/robots`, `/robots/:id/queued-commands` and `/log-entries`. The one other write is Reset (`POST /floors/:id/reset`), which clears the log and writes no entry.
+- Every change goes through `POST /commands/*`. The resource routes are read-only and limited to what the web uses: `GET /floors`, `/cells`, `/robots`, `/robots/:id/queued-commands` and `/log-entries`. The other writes are Reset (`POST /floors/:id/reset`, clears that floor's log), Fork, Delete Floor and floor selection (`timeline.md`); none writes an entry. A fork copies the source's entries up to its tick.
 
 - No change is saved without its entry. Each entry is written in the same DB transaction, under the write lock, as the change it records. If the entry fails to write, the change rolls back and the command throws (500 over HTTP).
 - Entries are therefore in the order the changes were saved: a tick never logs between a command and its entry.
@@ -54,11 +54,11 @@ This is the single source for the robot report. The `TICK` result and the REPORT
 
 ## API
 
-- `GET /log-entries` returns every entry, ordered by ascending `id`.
+- `GET /log-entries?floorId=` returns that floor's entries, ordered by ascending `id`. `floorId` is required (missing → 400).
 
 ## Frontend
 
-- Each time the Log modal opens, it calls `GET /log-entries` and shows one line per entry, in `id` order: `${action} ${params}: ${result}`, with `whitespace-pre-line` so multi-line TICK results break.
+- Each time the Log modal opens, it calls `GET /log-entries?floorId=` for the viewed floor and shows one line per entry, in `id` order: `${action} ${params}: ${result}`, with `whitespace-pre-line` so multi-line TICK results break.
 - The modal's close button is an `X` styled to match `app-button` (border, colors, hover), with `cursor-pointer`.
 
 ## Testing
@@ -77,7 +77,7 @@ API:
 - `step()` with no robots writes `EMPTY`.
 - `step()` with `scenarioMode` set to `true` writes no entry.
 - The report formatter produces the exact line format and `EMPTY`. It is shared by REPORT and `TICK`.
-- `GET /log-entries` returns all entries in ascending `id` order.
+- `GET /log-entries?floorId=` returns only that floor's entries in ascending `id` order.
 
 Web:
 

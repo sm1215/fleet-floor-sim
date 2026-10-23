@@ -13,6 +13,7 @@
     'top top'
     'sliders sliders'
     'grid queue'
+    'timeline .'
     'errors .'
     'controls controls';
 }
@@ -31,6 +32,10 @@
   max-height: 400px;
 }
 
+.area-timeline {
+  grid-area: timeline;
+}
+
 .area-errors {
   grid-area: errors;
 }
@@ -47,6 +52,7 @@
       'top'
       'sliders'
       'grid'
+      'timeline'
       'errors'
       'queue'
       'controls';

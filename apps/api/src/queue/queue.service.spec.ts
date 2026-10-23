@@ -16,6 +16,7 @@ describe('QueueService.doNext()', () => {
   let robots: Repository<Robot>;
   let commands: Repository<QueuedCommand>;
   let cellIds: number[];
+  let floorId: number;
 
   beforeEach(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -28,6 +29,7 @@ describe('QueueService.doNext()', () => {
     const floor = await dataSource
       .getRepository(Floor)
       .save({ width: 3, height: 1 });
+    floorId = floor.id;
     const cells = await dataSource.getRepository(Cell).save(
       [0, 1, 2].map((x) => ({
         obstacle: false,
@@ -57,7 +59,7 @@ describe('QueueService.doNext()', () => {
   }
 
   async function run() {
-    return Promise.all(await service.doNext());
+    return Promise.all(await service.doNext(floorId));
   }
 
   async function queueOf(robotId: number): Promise<string[]> {
@@ -71,7 +73,7 @@ describe('QueueService.doNext()', () => {
   it('returns a promise of an array with one promise per robot', async () => {
     await addRobot(1, 'MOVE');
     await addRobot(2);
-    const outer = service.doNext();
+    const outer = service.doNext(floorId);
     expect(outer).toBeInstanceOf(Promise);
     const inner = await outer;
     expect(inner).toHaveLength(2);
@@ -80,7 +82,7 @@ describe('QueueService.doNext()', () => {
   });
 
   it('no robots → []', async () => {
-    await expect(service.doNext()).resolves.toEqual([]);
+    await expect(service.doNext(floorId)).resolves.toEqual([]);
   });
 
   it('results are in displayId order, even when it differs from id order', async () => {
@@ -139,5 +141,28 @@ describe('QueueService.doNext()', () => {
     for (const robot of all) {
       await expect(queueOf(robot.id)).resolves.toHaveLength(1);
     }
+  });
+  it("doNext(floorId) takes heads only from that floor's robots", async () => {
+    const mine = await addRobot(1, 'MOVE');
+    const other = await dataSource
+      .getRepository(Floor)
+      .save({ width: 1, height: 1 });
+    const otherCell = await dataSource.getRepository(Cell).save({
+      obstacle: false,
+      xPosition: 0,
+      yPosition: 0,
+      floor: other,
+    });
+    const theirs = await robots.save({
+      direction: 0,
+      displayId: 1,
+      cell: { id: otherCell.id },
+    });
+    await commands.save({ command: 'LEFT', params: null, robot: theirs });
+    const taken = await run();
+    expect(taken.map((t) => t && [t.robot.id, t.command])).toEqual([
+      [mine.id, 'MOVE'],
+    ]);
+    expect(await queueOf(theirs.id)).toEqual(['LEFT']);
   });
 });

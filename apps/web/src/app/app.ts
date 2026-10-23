@@ -1,11 +1,21 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, HostListener, inject, signal, viewChild } from '@angular/core';
+import {
+  Component,
+  computed,
+  DestroyRef,
+  HostListener,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { interval, Subscription, switchMap } from 'rxjs';
 import { Button } from './components/button/button';
 import { Grid } from './components/grid/grid';
 import { LogModal } from './components/log-modal/log-modal';
 import { QueuePanel } from './components/queue-panel/queue-panel';
+import { Timeline } from './components/timeline/timeline';
 import { EngineState } from './models/engine-state.model';
+import { Floor } from './models/floor.model';
 import { CommandName, QueuedCommand } from './models/queued-command.model';
 import { SimulationApiService } from './services/simulation-api.service';
 
@@ -25,6 +35,8 @@ export const COMMAND_ERROR = 'Command failed to queue.';
 export const DELETE_ERROR = 'Robot failed to delete.';
 export const QUEUE_LOAD_ERROR = "Server can't be reached";
 export const RESET_ERROR = 'Floor failed to reset.';
+export const FORK_ERROR = 'Floor failed to fork.';
+export const DELETE_FLOOR_ERROR = 'Floor failed to delete.';
 
 /** The API's error message (e.g. a failed step), or the unreachable-server text. */
 function serverMessage(error: unknown): string {
@@ -34,13 +46,13 @@ function serverMessage(error: unknown): string {
 
 @Component({
   selector: 'app-root',
-  imports: [Button, Grid, LogModal, QueuePanel],
+  imports: [Button, Grid, LogModal, QueuePanel, Timeline],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
 export class App {
   private readonly api = inject(SimulationApiService);
-  private readonly grid = viewChild.required(Grid);
+  protected readonly grid = viewChild.required(Grid);
 
   protected readonly editMode = signal(false);
   protected readonly selectedRobotId = signal<number | null>(null);
@@ -50,6 +62,13 @@ export class App {
   protected readonly running = signal(false);
   /** Last tick seen from the API; a change reloads the grid's robots and the queue panel. */
   protected readonly currentTick = signal(0);
+  /** The viewed (active) floor. */
+  protected readonly floorId = signal<number | null>(null);
+  protected readonly floors = signal<Floor[]>([]);
+  /** The past tick on the scrubber; null = live (timeline.md). */
+  protected readonly viewTick = signal<number | null>(null);
+  /** Viewing a past tick: everything that changes the floor is disabled. */
+  protected readonly readOnly = computed(() => this.viewTick() !== null);
   protected readonly errors = signal<{ id: number; text: string }[]>([]);
   private nextErrorId = 1;
   private poll: Subscription | undefined;
@@ -65,7 +84,7 @@ export class App {
 
   @HostListener('document:keydown', ['$event'])
   onKeydown(event: KeyboardEvent): void {
-    if (this.logOpen() || hasModifier(event) || isTextField(event.target)) {
+    if (this.logOpen() || this.readOnly() || hasModifier(event) || isTextField(event.target)) {
       return;
     }
     const handler = this.arrowKeyHandlers[event.key];
@@ -114,6 +133,7 @@ export class App {
   onResetAll(): void {
     if (!window.confirm('Reset the entire floor?')) return;
     this.stopPolling();
+    this.viewTick.set(null);
     this.grid()
       .resetFloor()
       .subscribe({
@@ -129,6 +149,82 @@ export class App {
       });
   }
 
+  /** Delete Floor (timeline.md): after a Yes, deletes the viewed floor and shows the active one. */
+  onDeleteFloor(): void {
+    const floorId = this.floorId();
+    if (floorId === null || !window.confirm('Delete this floor?')) return;
+    this.api.deleteFloor(floorId).subscribe({
+      next: (state) => {
+        this.clearSelection();
+        this.viewTick.set(null);
+        this.applyEngineState(state);
+        this.refreshFloors();
+      },
+      error: () => this.addError(DELETE_FLOOR_ERROR),
+    });
+  }
+
+  /** Fork From Here: forks the viewed floor at the scrubber's tick, then shows the fork live. */
+  onFork(tick: number): void {
+    const floorId = this.floorId();
+    if (floorId === null) return;
+    this.api.forkFloor(floorId, tick).subscribe({
+      next: () => {
+        this.clearSelection();
+        this.viewTick.set(null);
+        this.refreshEngine();
+      },
+      error: () => this.addError(FORK_ERROR),
+    });
+  }
+
+  /** The dropdown: makes that floor active (the engine pauses) and shows it live. */
+  onFloorSelected(floorId: number): void {
+    this.api.selectFloor(floorId).subscribe({
+      next: (state) => {
+        this.clearSelection();
+        this.viewTick.set(null);
+        this.applyEngineState(state);
+      },
+      error: () => this.addError(QUEUE_LOAD_ERROR),
+    });
+  }
+
+  /** The scrubber moved; back at live, the selected robot's queue is re-read. */
+  onViewTickChange(tick: number | null): void {
+    this.viewTick.set(tick);
+    if (tick === null) {
+      // A robot that exists only in the past (negative id, see toLoadedState) is gone live.
+      const id = this.selectedRobotId();
+      if (id !== null && id < 0) this.clearSelection();
+      this.reloadQueue();
+    }
+  }
+
+  /** A past tick is shown: the queue panel shows the selected robot's queue at that tick. */
+  onHistoryShown(): void {
+    const id = this.selectedRobotId();
+    if (id !== null) this.queue.set(this.grid().historyQueue(id));
+  }
+
+  /** Every live floor shown: the first one tells App the floor id; the list may have changed. */
+  onFloorShown(floor: Floor): void {
+    if (this.floorId() === null) this.floorId.set(floor.id);
+    this.refreshFloors();
+  }
+
+  private refreshFloors(): void {
+    this.api.getFloors().subscribe({
+      next: (floors) => this.floors.set(floors),
+      error: () => this.addError(QUEUE_LOAD_ERROR),
+    });
+  }
+
+  private clearSelection(): void {
+    this.selectedRobotId.set(null);
+    this.queue.set([]);
+  }
+
   private refreshEngine(): void {
     this.api.getEngine().subscribe({
       next: (state) => this.applyEngineState(state),
@@ -140,6 +236,7 @@ export class App {
   private applyEngineState(state: EngineState): void {
     for (const text of state.errors) this.addError(text);
     this.running.set(state.running);
+    this.floorId.set(state.floorId);
     if (state.currentTick !== this.currentTick()) {
       this.currentTick.set(state.currentTick);
       this.reloadQueue();
@@ -159,10 +256,10 @@ export class App {
     }
   }
 
-  /** Reloads the selected robot's queue; a tick takes its head command. */
+  /** Reloads the selected robot's queue; a tick takes its head command. Live only. */
   private reloadQueue(): void {
     const id = this.selectedRobotId();
-    if (id === null) return;
+    if (id === null || this.readOnly()) return;
     this.api.getQueuedCommands(id).subscribe({
       next: (commands) => {
         if (this.selectedRobotId() === id) this.queue.set(commands);
@@ -188,6 +285,10 @@ export class App {
       return;
     }
     this.selectedRobotId.set(id);
+    if (this.readOnly()) {
+      this.queue.set(this.grid().historyQueue(id));
+      return;
+    }
     this.api.getQueuedCommands(id).subscribe({
       next: (commands) => {
         if (this.selectedRobotId() === id) this.queue.set(commands);
@@ -221,7 +322,7 @@ export class App {
   onDelete(): void {
     const id = this.selectedRobotId();
     const robot = id === null ? undefined : this.grid().findRobot(id);
-    if (id === null || !robot) return;
+    if (id === null || !robot || this.readOnly()) return;
     this.api.deleteCommand(robot.displayId).subscribe({
       next: () => {
         this.grid().removeRobot(id);
@@ -238,7 +339,7 @@ export class App {
   private sendCommand(command: CommandName): void {
     const id = this.selectedRobotId();
     const robot = id === null ? undefined : this.grid().findRobot(id);
-    if (id === null || !robot) return;
+    if (id === null || !robot || this.readOnly()) return;
     this.api.queueCommand(robot.displayId, command).subscribe({
       next: () => {
         if (this.selectedRobotId() === id) this.reloadQueue();

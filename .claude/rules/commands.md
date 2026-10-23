@@ -8,6 +8,7 @@ paths:
 ## Identity
 
 - Robots have a `displayId` column, separate from the internal primary key `id`.
+- Commands act on the active floor (`timeline.md`). `displayId` is unique per floor.
 - Commands identify robots by `RId`: uppercase `R` + an integer (e.g. `R3`). Parse the integer as `displayId`.
 - `RId` without a leading uppercase `R` or a valid integer → ignored (see Ignored requests).
 
@@ -75,7 +76,7 @@ A `MOVE` targets the cell one step forward in the robot's direction (N = +y, E =
 ## FLOOR
 
 - `width` and `height` are ints, each defaulting to 5.
-- No floor in the DB → create one. A floor exists → update its width and height from the params.
+- No active floor → create one and make it active. Otherwise → update the active floor's width and height from the params.
 
 ## OBSTACLE
 
@@ -86,7 +87,7 @@ A `MOVE` targets the cell one step forward in the robot's direction (N = +y, E =
 ## PLACE
 
 - Requires int `x`, int `y`, and `direction`. `rId` is optional.
-- No `rId` → create a new robot whose `displayId` is the highest `displayId` in the DB + 1 (1 when there are no robots).
+- No `rId` → create a new robot whose `displayId` is the highest `displayId` on the active floor + 1 (1 when it has no robots).
 - `direction` is `NORTH` / `EAST` / `SOUTH` / `WEST` (uppercase), mapped to the `Direction` enum in
   `apps/web/src/app/models/direction.ts` (0 N, 1 E, 2 S, 3 W).
 - With `rId`, find the robot by `displayId`:

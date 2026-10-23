@@ -35,6 +35,7 @@ describe('Engine commands (SQLite)', () => {
       .getRepository(Floor)
       .save({ width: 3, height: 3 });
     floorId = floor.id;
+    engine.floorId = floorId;
     for (let y = 0; y < 3; y++) {
       for (let x = 0; x < 3; x++) {
         await cells.save({

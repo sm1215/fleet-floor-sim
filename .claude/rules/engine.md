@@ -11,7 +11,9 @@ paths:
 
 ## State
 
-- `currentTick`: number, starts at `0`, increments by `1`.
+- `floorId`: the active floor (lowest id on start). Commands and ticks act on it (`timeline.md`).
+- `currentTick`: the active floor's tick. Each floor has its own tick, starting at `0` and incrementing by `1`; loaded on start as `MAX(log_entry.tick)` per floor.
+- `snapshotFrequency`: `10`. A snapshot is saved at the start of a tick when `currentTick % snapshotFrequency === 0` (not in `scenarioMode`).
 - `tickRate`: number in milliseconds, defaults to `1000`.
 - `running`: boolean.
 - `scenarioMode`: boolean, defaults to `false`. The scenario runner sets it to `true`.
@@ -47,3 +49,4 @@ paths:
 
 - An endpoint to call `step()` manually.
 - An endpoint to toggle `running` on and off.
+- `POST /engine/floor { floorId }` to switch the active floor (pauses; see `timeline.md`).

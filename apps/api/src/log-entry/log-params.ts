@@ -3,8 +3,9 @@ import { type Command, Direction, DIRECTION_NAMES } from '../shared/types.js';
 export type LogAction =
   'PLACE' | 'OBSTACLE' | 'QUEUE' | 'DELETE' | 'FLOOR' | 'TICK';
 
-/** A log entry's action and params text; the result is added when written. */
+/** A log entry's floor, action and params text; the result is added when written. */
 export interface LogLine {
+  floorId: number;
   action: LogAction;
   params: string;
 }

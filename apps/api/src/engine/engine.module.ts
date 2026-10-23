@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { HistoryModule } from '../history/history.module.js';
 import { LogEntryModule } from '../log-entry/log-entry.module.js';
 import { QueueModule } from '../queue/queue.module.js';
 import { WriteLockModule } from '../shared/write-lock.js';
@@ -9,7 +10,7 @@ import { EngineController } from './engine.controller.js';
 import { EngineService } from './engine.service.js';
 
 @Module({
-  imports: [QueueModule, WriteLockModule, LogEntryModule],
+  imports: [QueueModule, WriteLockModule, LogEntryModule, HistoryModule],
   controllers: [EngineController, CommandsController],
   providers: [EngineService, EngineCommandsService, DirectCommandsService],
   exports: [EngineService],

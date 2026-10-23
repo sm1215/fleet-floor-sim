@@ -141,3 +141,19 @@ User asked to fix the two minor log issues and roll back any change whose log wr
 User asked to fix review #1 and remove unused CRUD write routes. doNext now dequeues one robot at a time (a failure stops the rest, so nothing is deleted after a rollback). Removed POST/PATCH/DELETE on floors, cells, robots, queued-commands, log-entries (kept reads + reset); resize tests moved to floor-resize.spec.ts via Engine FLOOR; e2e uses /commands. Deleting old DTO files was blocked by permissions. Not committed.
 
 User asked to remove the unused read routes too. Removed GET /floors/:id, /cells/:id, /robots/:id, /queued-commands, /queued-commands/:id, /log-entries/:id and their service methods; QueuedCommandController deleted (user ran rm; my deletes were blocked). FloorService.findOne now private (reset uses it). e2e asserts the removed reads 404. Rules updated. Not committed.
+
+User asked for a plan from pathfinding-plan.md (GOTO x,y). Decisions via Q&A: no-path count in-memory in Engine; new POST /commands/goto logged as QUEUE "R1 GOTO 3,4"; no scenario support; pure BFS in apps/api/src/pathfinding/ + pathfinding.md rules; drop on 3rd no-path tick with UNREACHABLE "R1 3, 4"; already-on-target finishes with no move; Shift+Click only in non-edit mode. Plan: .claude/plans/pathfinding-impl-plan.md.
+
+User asked for a timeline implementation plan from .claude/plans/timeline-plan.md ("table" → Floor; spec corrected). Decided: Step/Play act on the viewed floor, per-floor tick, switching pauses; fork copies queues, no log entry; Delete Floor confirms, last → new 5x5; read-only keeps Pause; tick_history table; number input clamps. Rulings: display_id unique per floor, snapshots skipped in scenarioMode. Saved .claude/plans/timeline-impl-plan.md.
+
+User revised the timeline plan: log_entry gets a tick column (the floor's currentTick when written; TICK T has tick T) instead of deriving it from TICK order. Migration backfills it by counting earlier TICK rows. Replay uses snapshot.tick < tick <= T; fork copies entries with tick <= T; per-floor currentTick loads as MAX(tick). Updated .claude/plans/timeline-impl-plan.md.
+
+User asked to execute timeline-plan.md (via timeline-impl-plan.md). Built multi-floor API (active floor, per-floor tick), log_entry floor_id+tick, tick_history snapshots every 10 ticks, pure replay, history/fork/delete/select routes, Timeline component, read-only grid, per-floor Reset, Delete Floor. Rulings: hand-written migration; snapshot replaces same-tick row; tick reload ignored after floor switch. Tests/lint/build/scenarios pass. Not committed.
+
+User asked to fix the first deferred minor: the timeline number box was overwritten by each new tick while typing. It now holds its value from focus until blur or change, then shows the scrubber value. Test added; web suite 215/215, lint clean. Not committed.
+
+User asked for a subagent code review, then to fix both Important findings and Minor #3. Fixed: an automatic tick waiting on the lock is dropped once paused (Fork/floor switch can't advance the paused floor); history robots map to live ids by displayId (past-only robots get -displayId, deselected when going live); fork copies use chunked bulk inserts. Tests first; api 262, e2e 70, web 220; lint/build pass. Not committed.
+
+User asked for the queue panel title fix with no testing. The panel now shows the selected robot's R<displayId> (looked up through the grid) instead of its database id; App.grid became protected so the template can reach it. Not tested, per the user. Not committed.
+
+- Re-ran tests after the queue-title change: API unit 262, API e2e 70, web 220 all pass. Lint failed only on the long app.html line; Prettier reformatted it and lint now passes. Not committed.
