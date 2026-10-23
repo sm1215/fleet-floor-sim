@@ -5,7 +5,10 @@ import {
   HttpCode,
   Post,
 } from '@nestjs/common';
-import { DEFAULT_FLOOR_SIZE } from '../floor/floor.model.js';
+import {
+  DEFAULT_FLOOR_HEIGHT,
+  DEFAULT_FLOOR_WIDTH,
+} from '../floor/floor.model.js';
 import { DIRECTION_NAMES } from '../shared/types.js';
 import type { CommandResult } from './command-result.js';
 import { DeleteCommandDto } from './dto/delete-command.dto.js';
@@ -31,7 +34,7 @@ export class CommandsController {
   @Post('floor')
   @HttpCode(200)
   floor(@Body() dto: FloorCommandDto) {
-    const { width = DEFAULT_FLOOR_SIZE, height = DEFAULT_FLOOR_SIZE } = dto;
+    const { width = DEFAULT_FLOOR_WIDTH, height = DEFAULT_FLOOR_HEIGHT } = dto;
     return respond(this.engine.floor(width, height));
   }
 

@@ -63,7 +63,7 @@ describe('Floor persistence (e2e)', () => {
     }
   });
 
-  it('POST /floors/:id/reset → 200, then GET /floors shows it 5×5', async () => {
+  it('POST /floors/:id/reset → 200, then GET /floors shows it 10×8', async () => {
     const app = await startApp(newFile());
     try {
       const server = app.getHttpServer();
@@ -76,11 +76,11 @@ describe('Floor persistence (e2e)', () => {
       await request(server)
         .post(`/floors/${id}/reset`)
         .expect(200)
-        .expect({ id, width: 5, height: 5 });
+        .expect({ id, width: 10, height: 8 });
       await request(server)
         .get('/floors')
         .expect(200)
-        .expect([{ id, width: 5, height: 5 }]);
+        .expect([{ id, width: 10, height: 8 }]);
     } finally {
       await app.close();
     }

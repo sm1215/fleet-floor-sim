@@ -7,7 +7,7 @@ paths:
 
 ## Coordinates
 
-- Floor width and height are integers from 1 to 20 inclusive. Default is 5 for both.
+- Floor width and height are integers from 1 to 20 inclusive. Default is width 10, height 8.
 - Origin (0,0) is the bottom-left cell, unlike native CSS top-left flow.
 - X grows to the east (right). Y grows to the north (up). Render the top row (y = height - 1) first.
 
@@ -25,7 +25,7 @@ paths:
 
 ## Initial load
 
-- On init, `GET /floors`. If the list is empty, `POST /commands/floor { width: 5, height: 5 }`, then `GET /floors` again.
+- On init, `GET /floors`. If the list is empty, `POST /commands/floor { width: 10, height: 8 }`, then `GET /floors` again.
   Otherwise use the floor whose id is the active `floorId` (from `GET /engine`), or the first floor returned, and set the UI (sliders and grid) to its values.
 - While viewing a past tick the grid is read-only: sliders disabled, cell clicks send nothing (`timeline.md`).
 
@@ -68,11 +68,11 @@ Client tests go in `grid.spec.ts` (Vitest, mock `SimulationApiService`). API res
 
 Client (`grid.spec.ts`):
 
-- Sliders have min 1, max 20, step 1 and default to 5 before the floor loads.
+- Sliders have min 1, max 20, step 1 and default to width 10, height 8 before the floor loads.
 - Renders bottom-left as (0,0): the first rendered row is y = height - 1, and x increases left to right.
 - Row labels read height - 1 down to 0 (top to bottom); column labels read 0 to width - 1 (left to right).
 - After a height increase, the new row labels appear at the top and existing labels keep their numbers.
-- Init with an empty `GET /floors` → `POST /commands/floor` called with width 5, height 5, then `GET /floors` again; UI shows 5x5.
+- Init with an empty `GET /floors` → `POST /commands/floor` called with width 10, height 8, then `GET /floors` again; UI shows 10x8.
 - Init with an existing floor → no POST; sliders and grid show that floor's width/height.
 - Slider `input` event does not save; `change` event calls `POST /commands/floor` once with the new values.
 - Rejected resize (400) → sliders and grid revert to the last saved size.

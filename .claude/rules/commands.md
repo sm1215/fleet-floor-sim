@@ -24,7 +24,7 @@ One `POST /commands/<name>` route per command. Params come in the body and are v
 | LEFT     | `POST /commands/left`     | `rId`                                           |
 | RIGHT    | `POST /commands/right`    | `rId`                                           |
 | MOVE     | `POST /commands/move`     | `rId`                                           |
-| FLOOR    | `POST /commands/floor`    | `width` (int, default 5), `height` (int, default 5) |
+| FLOOR    | `POST /commands/floor`    | `width` (int, default 10), `height` (int, default 8) |
 | OBSTACLE | `POST /commands/obstacle` | `x` (int, required), `y` (int, required)        |
 | PLACE    | `POST /commands/place`    | `rId` (optional), `x` (int), `y` (int), `direction` |
 | QUEUE    | `POST /commands/queue`    | `rId`, `commands` (one or more of `LEFT` / `RIGHT` / `MOVE`) |
@@ -84,7 +84,7 @@ A `MOVE` targets the cell one step forward in the robot's direction (N = +y, E =
 
 ## FLOOR
 
-- `width` and `height` are ints, each defaulting to 5.
+- `width` and `height` are ints, defaulting to 10 and 8. The scenario runner's `FLOOR` defaults to 5×5 instead (`scenario-runner.md`).
 - No active floor → create one and make it active. Otherwise → update the active floor's width and height from the params.
 
 ## OBSTACLE
@@ -140,7 +140,7 @@ Service / DTO specs:
 - `RId` parsing: `R3` → 3. `r3`, `3`, `R`, `Rx` → ignored with a descriptive message.
 - Each endpoint's ignored cases → 400 with a descriptive message, nothing changed.
 - LEFT / RIGHT / MOVE / QUEUE enqueue the right command. QUEUE enqueues multiple commands in order; it rejects the whole request if any command is lowercase or unknown.
-- FLOOR: defaults to 5×5; creates when missing; updates when present.
+- FLOOR: defaults to 10×8; creates when missing; updates when present.
 - Success → `200 { ok: true }`.
 - OBSTACLE: toggles Open ↔ Obstacle; ON a robot's cell, missing x/y or no cell → ignored.
 - PLACE: creates a new robot; updates the cell and direction of an existing `displayId`; accepts only uppercase direction names.

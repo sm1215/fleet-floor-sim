@@ -34,7 +34,8 @@ import { Cell } from '../cell/cell';
 
 const MAX_FLOOR_WIDTH = 500;
 const MAX_FLOOR_HEIGHT = 400;
-const DEFAULT_SIZE = 5;
+const DEFAULT_WIDTH = 10;
+const DEFAULT_HEIGHT = 8;
 
 export const RESIZE_ERROR = "Can't resize grid, not enough space for existing robots";
 export const SERVER_ERROR = "Server can't be reached";
@@ -96,8 +97,8 @@ export class Grid implements OnInit {
   protected readonly cells = signal<CellModel[]>([]);
   protected readonly robots = signal<Robot[]>([]);
   /** Slider values; differ from floor() only while a change is unsaved. */
-  protected readonly width = signal(DEFAULT_SIZE);
-  protected readonly height = signal(DEFAULT_SIZE);
+  protected readonly width = signal(DEFAULT_WIDTH);
+  protected readonly height = signal(DEFAULT_HEIGHT);
 
   /** Square cell size in px, so the floor fits within MAX_FLOOR_WIDTH x MAX_FLOOR_HEIGHT. */
   protected readonly cellSize = computed(() => {
@@ -155,7 +156,7 @@ export class Grid implements OnInit {
           return wanted
             ? of(wanted)
             : this.api
-                .floorCommand({ width: DEFAULT_SIZE, height: DEFAULT_SIZE })
+                .floorCommand({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT })
                 .pipe(switchMap(() => this.currentFloor()));
         }),
         takeUntilDestroyed(this.destroyRef),

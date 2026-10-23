@@ -98,7 +98,7 @@ describe('Engine (e2e)', () => {
     const log = (await http().get('/log-entries?floorId=1').expect(200))
       .body as ApiLogEntry[];
     expect(log.map((e) => [e.action, e.params, e.tick])).toEqual([
-      ['FLOOR', '5, 5, CREATED', 0],
+      ['FLOOR', '10, 8, CREATED', 0],
       ['TICK', '1', 1],
       ['TICK', '2', 2],
       ['TICK', '3', 3],
@@ -118,7 +118,7 @@ describe('Engine (e2e)', () => {
     });
     const mine = (await http().get('/log-entries?floorId=1').expect(200))
       .body as ApiLogEntry[];
-    expect(mine.map((e) => e.params)).toEqual(['5, 5, CREATED']);
+    expect(mine.map((e) => e.params)).toEqual(['10, 8, CREATED']);
     const theirs = (
       await http().get(`/log-entries?floorId=${other.id}`).expect(200)
     ).body as ApiLogEntry[];

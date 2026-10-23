@@ -62,6 +62,7 @@ describe('scenario runner (e2e)', () => {
   it('starts on a fresh 5x5 floor', async () => {
     expect(await run('REPORT')).toBe('EMPTY\n');
     expect(await run('PLACE R1 4,4,NORTH\nREPORT')).toBe('R1 4,4,NORTH\n');
+    expect(await run('PLACE R1 5,0,NORTH\nREPORT')).toBe('EMPTY\n');
   });
 
   it('leaves no rows after the run', async () => {

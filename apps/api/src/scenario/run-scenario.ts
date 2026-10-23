@@ -1,6 +1,9 @@
 import type { EngineService } from '../engine/engine.service.js';
-import { DEFAULT_FLOOR_SIZE } from '../floor/floor.model.js';
-import { parseLine, type ScenarioCommand } from './parse-line.js';
+import {
+  parseLine,
+  SCENARIO_FLOOR_SIZE,
+  type ScenarioCommand,
+} from './parse-line.js';
 
 async function dispatch(
   engine: EngineService,
@@ -45,8 +48,8 @@ export async function runScenario(
   engine.scenarioMode = true;
   const start: ScenarioCommand = {
     kind: 'FLOOR',
-    width: DEFAULT_FLOOR_SIZE,
-    height: DEFAULT_FLOOR_SIZE,
+    width: SCENARIO_FLOOR_SIZE,
+    height: SCENARIO_FLOOR_SIZE,
   };
   const commands = text.split(/\r?\n/).map(parseLine);
   try {

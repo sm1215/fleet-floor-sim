@@ -27,9 +27,9 @@ describe('CommandsController', () => {
     controller = moduleRef.get(CommandsController);
   });
 
-  it('floor defaults to 5x5 and returns { ok: true }', async () => {
+  it('floor defaults to 10x8 and returns { ok: true }', async () => {
     await expect(controller.floor({})).resolves.toEqual({ ok: true });
-    expect(engine.floor).toHaveBeenCalledWith(5, 5);
+    expect(engine.floor).toHaveBeenCalledWith(10, 8);
     await controller.floor({ width: 8, height: 3 });
     expect(engine.floor).toHaveBeenLastCalledWith(8, 3);
   });

@@ -86,7 +86,7 @@ describe('Grid', () => {
       resetFloor: vi.fn((id: number) => {
         robots = [];
         obstacleIds = [];
-        return of((server = { id, width: 5, height: 5 }));
+        return of((server = { id, width: 10, height: 8 }));
       }),
       getCells: vi.fn((floorId: number) => {
         const floor = floorById(floorId);
@@ -145,16 +145,19 @@ describe('Grid', () => {
     slider(el, label).dispatchEvent(new Event('change'));
   }
 
-  it('sliders have min 1, max 20, step 1 and default to 5 before the floor loads', async () => {
+  it('sliders have min 1, max 20, step 1 and default to 10 x 8 before the floor loads', async () => {
     api.getFloors.mockReturnValue(new Subject<Floor[]>());
     const { el } = await render();
-    for (const label of ['Width', 'Height'] as const) {
+    for (const [label, value] of [
+      ['Width', '10'],
+      ['Height', '8'],
+    ] as const) {
       const input = slider(el, label);
       expect(input.type).toBe('range');
       expect(input.min).toBe('1');
       expect(input.max).toBe('20');
       expect(input.step).toBe('1');
-      expect(input.value).toBe('5');
+      expect(input.value).toBe(value);
     }
     expect(el.querySelector('.floor')).toBeNull();
   });
@@ -217,13 +220,13 @@ describe('Grid', () => {
     expect(floor.style.gridTemplateRows).toBe(`repeat(${height}, ${size}px)`);
   });
 
-  it('empty GET /floors → floorCommand({width:5,height:5}), then GET /floors again; UI shows 5x5', async () => {
+  it('empty GET /floors → floorCommand({width:10,height:8}), then GET /floors again; UI shows 10x8', async () => {
     const { el } = await render();
-    expect(api.floorCommand).toHaveBeenCalledExactlyOnceWith({ width: 5, height: 5 });
+    expect(api.floorCommand).toHaveBeenCalledExactlyOnceWith({ width: 10, height: 8 });
     expect(api.getFloors).toHaveBeenCalledTimes(2);
-    expect(el.querySelectorAll('app-cell').length).toBe(25);
-    expect(slider(el, 'Width').value).toBe('5');
-    expect(slider(el, 'Height').value).toBe('5');
+    expect(el.querySelectorAll('app-cell').length).toBe(80);
+    expect(slider(el, 'Width').value).toBe('10');
+    expect(slider(el, 'Height').value).toBe('8');
   });
 
   it('existing floor → no floorCommand; sliders and grid show its size', async () => {
@@ -464,7 +467,7 @@ describe('Grid', () => {
   });
 
   describe('resetFloor', () => {
-    it('shows the returned 5×5 floor, its cells and no robots', async () => {
+    it('shows the returned 10×8 floor, its cells and no robots', async () => {
       obstacleIds = [3];
       robots = [robot(9, 2, 1, 0)];
       const { fixture, el } = await render(8, 6);
@@ -477,11 +480,11 @@ describe('Grid', () => {
 
       expect(done).toBe(true);
       expect(api.resetFloor).toHaveBeenCalledExactlyOnceWith(1);
-      expect(el.querySelectorAll('app-cell')).toHaveLength(25);
+      expect(el.querySelectorAll('app-cell')).toHaveLength(80);
       expect(el.querySelectorAll('.cell.obstacle')).toHaveLength(0);
       expect(el.querySelectorAll('app-robot')).toHaveLength(0);
-      expect(slider(el, 'Width').value).toBe('5');
-      expect(slider(el, 'Height').value).toBe('5');
+      expect(slider(el, 'Width').value).toBe('10');
+      expect(slider(el, 'Height').value).toBe('8');
     });
 
     it('a resize still in flight is dropped by a reset', async () => {
@@ -497,8 +500,8 @@ describe('Grid', () => {
       pending.next();
       pending.complete();
       await fixture.whenStable();
-      expect(el.querySelectorAll('app-cell')).toHaveLength(25);
-      expect(slider(el, 'Width').value).toBe('5');
+      expect(el.querySelectorAll('app-cell')).toHaveLength(80);
+      expect(slider(el, 'Width').value).toBe('10');
     });
 
     it('a failed reset keeps the shown floor and errors the returned observable', async () => {

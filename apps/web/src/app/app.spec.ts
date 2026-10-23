@@ -78,7 +78,7 @@ describe('App', () => {
     api = {
       getFloors: vi.fn(() => of([{ id: 1, width: 5, height: 5 }])),
       floorCommand: vi.fn(() => of(undefined)),
-      resetFloor: vi.fn(() => of({ id: 1, width: 5, height: 5 })),
+      resetFloor: vi.fn(() => of({ id: 1, width: 10, height: 8 })),
       getCells: vi.fn(() => of(makeCells(5, 5))),
       obstacleCommand: vi.fn(() => of(undefined)),
       getRobots: vi.fn(() =>
@@ -112,7 +112,7 @@ describe('App', () => {
     return fixture;
   }
 
-  it('renders the default 5 x 5 floor', async () => {
+  it('renders the loaded floor', async () => {
     const fixture = await setup();
     expect((fixture.nativeElement as HTMLElement).querySelectorAll('app-cell').length).toBe(25);
   });
@@ -790,10 +790,11 @@ describe('App', () => {
       beforeEach(() => {
         confirmSpy = vi.fn<(message?: string) => boolean>(() => true);
         vi.stubGlobal('confirm', confirmSpy);
-        // The reset floor has no robots.
+        // The reset floor is 10 x 8 with no robots, as the API returns.
         api.resetFloor.mockImplementation(() => {
           api.getRobots.mockReturnValue(of([]));
-          return of({ id: 1, width: 5, height: 5 });
+          api.getCells.mockReturnValue(of(makeCells(10, 8)));
+          return of({ id: 1, width: 10, height: 8 });
         });
       });
 
@@ -827,7 +828,7 @@ describe('App', () => {
         expect(queueItems(el)).toEqual(['MOVE', 'LEFT']);
       });
 
-      it('Yes → resetFloor(1); robots gone, selection and queue clear; engine state re-read', async () => {
+      it('Yes → resetFloor(1); 10 x 8 floor, robots gone, selection and queue clear; engine state re-read', async () => {
         const fixture = await setup();
         const el = fixture.nativeElement as HTMLElement;
         robotEl(el, 7).click();
@@ -835,6 +836,7 @@ describe('App', () => {
         buttonNamed(el, 'Reset All')!.click();
         await fixture.whenStable();
         expect(api.resetFloor).toHaveBeenCalledExactlyOnceWith(1);
+        expect(el.querySelectorAll('app-cell')).toHaveLength(80);
         expect(el.querySelectorAll('app-robot')).toHaveLength(0);
         expect(queueItems(el)).toEqual([]);
         for (const label of ['Move', 'Turn Left', 'Turn Right', 'Delete']) {

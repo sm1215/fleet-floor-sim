@@ -15,7 +15,7 @@ paths:
 ## Isolation
 
 - Each run uses an in-memory SQLite DB (`:memory:`) with migrations run on startup. The real DB (`DB_PATH`) is never touched.
-- Each run starts with a new, default 5x5 floor with every cell Open. A `FLOOR` line resizes it.
+- Each run starts with a new 5x5 floor (its own default, not the interface's 10 x 8) with every cell Open. A `FLOOR` line resizes it.
 - The Engine's `scenarioMode` is set to `true` (no `TICK` log entries, see `log-entry.md`). The Engine never auto-runs.
 - When the run ends, the floor and everything on it are removed, and the app context is closed.
 
@@ -45,7 +45,7 @@ Plain text, one command per line. Lines are split on `\r?\n`, so CRLF and LF bot
 | `TICK [amount]`              | `TICK 3`                   |
 | `REPORT`                     | `REPORT`                   |
 
-- Missing optional params use the `commands.md` defaults (`FLOOR` 5,5, `TICK` 1).
+- Missing optional params use the scenario defaults (`FLOOR` 5,5, its own, not the `commands.md` 10,8; `TICK` 1).
 - `QUEUE` takes one or more space-separated commands, enqueued in order.
 - `OBSTACLE` toggles the cell (Open ↔ Obstacle), as in `commands.md`.
 

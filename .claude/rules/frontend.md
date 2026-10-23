@@ -7,7 +7,7 @@ paths:
 
 - Use standalone components.
 - Layout follows `diagrams/fleet-floor-interface-layout_v1.excalidraw`.
-- Grid: default 5 x 5, max 20 x 20, origin 0,0.
+- Grid: default 10 x 8 (width x height), max 20 x 20, origin 0,0.
 - Cell clicks depend on Edit Mode: edit toggles Open/Obstacle; non-edit places a robot.
 - Move / Turn Left / Turn Right are only enabled when a robot is selected, and are also bound to arrow keys.
 - Talk to the backend over HTTP only; no direct engine or DB access.
@@ -21,7 +21,7 @@ paths:
 
 - A `Reset All` button sits right after `Log`. Click → `window.confirm('Reset the entire floor?')`.
 - No → nothing is sent; a running engine keeps running (`Pause`).
-- Yes → `POST /floors/:id/reset`. The API pauses the engine and sets that floor's tick to 0, deletes the floor's queued commands, robots, cells, log entries and snapshots (other floors untouched), and rebuilds the floor as 5 x 5 all Open (same floor id).
+- Yes → `POST /floors/:id/reset`. The API pauses the engine and sets that floor's tick to 0, deletes the floor's queued commands, robots, cells, log entries and snapshots (other floors untouched), and rebuilds the floor as 10 x 8 all Open (same floor id).
 - Then the grid shows the new floor, the selection and queue panel clear, and the client re-reads `GET /engine`, so the button reads `Play`.
 - Failure → `Floor failed to reset.` shows, and `GET /engine` is still re-read so Play / Pause matches the server.
 
@@ -41,7 +41,7 @@ paths:
 
 Engine control tests go in `app.spec.ts` (label, queue reload) and `grid.spec.ts` (robot reload on a `tick` change).
 
-Reset All tests go in `app.spec.ts` (placement, confirm text, No / Yes, running → `Play`, failure), `grid.spec.ts` (`resetFloor()` shows a 5 x 5 Open floor with no robots), and `apps/api/src/floor/floor.service.spec.ts` (cells, robots, queued commands, log, engine, same id, 404).
+Reset All tests go in `app.spec.ts` (placement, confirm text, No / Yes, running → `Play`, failure), `grid.spec.ts` (`resetFloor()` shows a 10 x 8 Open floor with no robots), and `apps/api/src/floor/floor.service.spec.ts` (cells, robots, queued commands, log, engine, same id, 404).
 
 Error display tests go in `app.spec.ts` (App renders the error list between the grid and the controls):
 

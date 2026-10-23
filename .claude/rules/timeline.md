@@ -92,7 +92,7 @@ While `viewTick` is not null, the grid shows the past state and nothing can chan
 ## Delete Floor
 
 - Button right after `Reset All`. `window.confirm('Delete this floor?')`. No → nothing.
-- Yes → `POST /floors/:id/delete`: deletes the floor and its cells, robots, queues, log entries and snapshots. The lowest remaining floor id becomes active. Deleting the last floor creates a new default 5 x 5 floor (logged `FLOOR 5, 5, CREATED`).
+- Yes → `POST /floors/:id/delete`: deletes the floor and its cells, robots, queues, log entries and snapshots. The lowest remaining floor id becomes active. Deleting the last floor creates a new default 10 x 8 floor (logged `FLOOR 10, 8, CREATED`).
 - Failure → `Floor failed to delete.`
 
 ## API routes
@@ -114,7 +114,7 @@ API:
 - Replay (`replay.spec.ts`): one test per table row, one head popped per robot per TICK, a GOTO head kept until arrival or UNREACHABLE, displaced robot on resize, new robot ids, no mutation.
 - Snapshots / history: snapshots at 0, 10, 20 only; none in scenarioMode; rolled back with a failed tick; `stateAt(t)` equals the live state for t = 0..25 across resize, delete, obstacles and GOTO (arrival and UNREACHABLE); no snapshot → null; route validation.
 - Fork: live state equals source `stateAt(T)`; GOTO params preserved; history matches; fork of a fork; source unchanged; selects new floor and pauses; no extra log entry.
-- Reset / Delete: per-floor reset; delete removes everything on that floor only; active → lowest id; last floor → new 5 x 5.
+- Reset / Delete: per-floor reset; delete removes everything on that floor only; active → lowest id; last floor → new 10 x 8.
 
 Web:
 

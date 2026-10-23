@@ -8,7 +8,10 @@ import {
 import { DataSource, EntityManager } from 'typeorm';
 import { Floor, LogEntry } from '../../database/entities/index.js';
 import { deleteFloorContents } from '../floor/floor-writes.js';
-import { DEFAULT_FLOOR_SIZE } from '../floor/floor.model.js';
+import {
+  DEFAULT_FLOOR_HEIGHT,
+  DEFAULT_FLOOR_WIDTH,
+} from '../floor/floor.model.js';
 import type { FloorState } from '../history/floor-state.js';
 import { HistoryService } from '../history/history.service.js';
 import { type LogLine, unreachableParams } from '../log-entry/log-params.js';
@@ -205,7 +208,7 @@ export class EngineService implements OnModuleInit, OnModuleDestroy {
     this.noPathTicks.delete(floorId);
     if (this.floorId === floorId) this.floorId = remaining?.id ?? null;
     if (this.floorId === null) {
-      await this.floor(DEFAULT_FLOOR_SIZE, DEFAULT_FLOOR_SIZE);
+      await this.floor(DEFAULT_FLOOR_WIDTH, DEFAULT_FLOOR_HEIGHT);
     }
     return { ok: true };
   }

@@ -21,7 +21,7 @@ A lightweight robot fleet floor simulator, built quickly. The Excalidraw diagram
 - User interactions and tick results are appended to a log history.
 
 ### Interface
-- Grid: default 5 x 5, max width 20, max height 20, origin at 0,0.
+- Grid: default 10 x 8 (width x height), max width 20, max height 20, origin at 0,0.
 - Cells are Open or Obstacle. Robots show their ID and a direction arrow.
 - **Edit mode**: clicking a cell toggles it between Open and Obstacle.
 - **Non-edit mode**: clicking a cell places a robot.
@@ -76,7 +76,7 @@ API-only: `npm run test:e2e -w apps/api` runs the e2e tests (`apps/api/test/`).
 ### Scenario runner
 - Standalone script in `apps/api/`, separate from the dev server.
 - Loads a **plain-text** scenario file given as a CLI argument: `npm run scenario -- path/to/scenario.txt`.
-- Runs the scenario against the Engine directly.
+- Runs the scenario against the Engine directly. Starts on a 5 x 5 floor (its own default, not the interface's 10 x 8).
 - Builds into `apps/api/dist-scenario/` first (own tsconfig, so `dist/` is never wiped), then runs `dist-scenario/src/scenario/main.js`. Use `npm run -s scenario -- …` to keep npm's banner lines off stdout.
 - Scenario file format and behavior: see `.claude/rules/scenario-runner.md`. Examples in `scenarios/`, expected REPORT output in `scenarios/expected/`.
 

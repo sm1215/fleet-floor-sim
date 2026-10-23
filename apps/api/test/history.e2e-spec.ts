@@ -50,7 +50,7 @@ describe('Floor history (e2e)', () => {
   it("GET /floors/:id/history?tick=3 returns that tick's robots", async () => {
     const res = await http().get('/floors/1/history?tick=3').expect(200);
     const state = res.body as ApiFloorState;
-    expect(state).toMatchObject({ width: 5, height: 5 });
+    expect(state).toMatchObject({ width: 10, height: 8 });
     expect(state.robots).toMatchObject([
       { displayId: 1, x: 0, y: 3, queue: ['MOVE'] },
     ]);

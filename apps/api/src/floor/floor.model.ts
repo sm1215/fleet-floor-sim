@@ -83,8 +83,11 @@ export function planResize(
   return { create, deleteCellIds, moves };
 }
 
-/** Width and height of a new or reset floor. */
-export const DEFAULT_FLOOR_SIZE = 5;
+/** Width of a new, reset or recreated floor. */
+export const DEFAULT_FLOOR_WIDTH = 10;
+
+/** Height of a new, reset or recreated floor. */
+export const DEFAULT_FLOOR_HEIGHT = 8;
 
 /** Largest floor width or height. */
 export const MAX_FLOOR_SIZE = 20;

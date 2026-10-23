@@ -54,7 +54,7 @@ describe('Commands (e2e)', () => {
     await http().post('/commands/delete').send({ rId: 'R1' }).expect(200);
     await http().post('/engine/step').expect(200);
     expect(await log()).toEqual([
-      ['FLOOR', '5, 5, CREATED', 'OK'],
+      ['FLOOR', '10, 8, CREATED', 'OK'],
       ['PLACE', 'R1 2, 3, NORTH', 'OK'],
       ['OBSTACLE', '0, 0, ON', 'OK'],
       ['QUEUE', 'R1 MOVE', 'OK'],

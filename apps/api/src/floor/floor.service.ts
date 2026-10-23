@@ -5,7 +5,7 @@ import { Floor } from '../../database/entities/index.js';
 import { EngineService } from '../engine/engine.service.js';
 import { WriteLock } from '../shared/write-lock.js';
 import { deleteFloorContents, insertOpenCells } from './floor-writes.js';
-import { DEFAULT_FLOOR_SIZE } from './floor.model.js';
+import { DEFAULT_FLOOR_HEIGHT, DEFAULT_FLOOR_WIDTH } from './floor.model.js';
 
 /** Reads and Reset. Create and resize go through POST /commands/floor. */
 @Injectable()
@@ -20,8 +20,8 @@ export class FloorService {
   /**
    * Pauses the engine and sets this floor's tick to 0, then empties the floor
    * (queued commands, robots, cells, log entries, snapshots) and rebuilds it
-   * as an all-Open DEFAULT_FLOOR_SIZE square. The floor keeps its id; other
-   * floors are untouched.
+   * as an all-Open DEFAULT_FLOOR_WIDTH x DEFAULT_FLOOR_HEIGHT floor. The floor
+   * keeps its id; other floors are untouched.
    */
   async reset(id: number): Promise<Floor> {
     await this.findOne(id);
@@ -31,8 +31,8 @@ export class FloorService {
       await deleteFloorContents(manager, id);
       const floor = await manager.getRepository(Floor).save({
         id,
-        width: DEFAULT_FLOOR_SIZE,
-        height: DEFAULT_FLOOR_SIZE,
+        width: DEFAULT_FLOOR_WIDTH,
+        height: DEFAULT_FLOOR_HEIGHT,
       });
       await insertOpenCells(manager, floor);
     });

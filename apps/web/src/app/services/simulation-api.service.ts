@@ -113,7 +113,7 @@ export class SimulationApiService {
     return this.http.get<Floor[]>(`${this.api}/floors`);
   }
 
-  /** Empties the floor and its log, rebuilds it 5 x 5 all Open, and pauses the engine at tick 0. */
+  /** Empties the floor and its log, rebuilds it all Open at the API's default size, and pauses the engine at tick 0. */
   resetFloor(id: number): Observable<Floor> {
     return this.http.post<Floor>(`${this.api}/floors/${id}/reset`, {});
   }

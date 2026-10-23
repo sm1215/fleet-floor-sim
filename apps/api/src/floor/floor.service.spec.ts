@@ -86,19 +86,19 @@ describe('FloorService', () => {
   });
 
   describe('reset', () => {
-    it('returns a 5×5 floor with 25 Open cells', async () => {
+    it('returns a 10×8 floor with 80 Open cells', async () => {
       const floor = await create(8, 6);
       await markObstacle(floor.id, 0, 0);
       await markObstacle(floor.id, 2, 3);
       await markObstacle(floor.id, 7, 5);
       const reset = await service.reset(floor.id);
-      expect(reset).toMatchObject({ width: 5, height: 5 });
+      expect(reset).toMatchObject({ width: 10, height: 8 });
       const after = await cellsOf(floor.id);
-      expect(after).toHaveLength(25);
+      expect(after).toHaveLength(80);
       expect(after.every((c) => !c.obstacle)).toBe(true);
       const expected: string[] = [];
-      for (let x = 0; x < 5; x++) {
-        for (let y = 0; y < 5; y++) expected.push(`${x},${y}`);
+      for (let x = 0; x < 10; x++) {
+        for (let y = 0; y < 8; y++) expected.push(`${x},${y}`);
       }
       expect(coords(after)).toEqual(expected.sort());
     });
@@ -159,8 +159,8 @@ describe('FloorService', () => {
       expect(await cellsOf(floor.id)).toHaveLength(48);
       release();
       await held;
-      await expect(resetting).resolves.toMatchObject({ width: 5, height: 5 });
-      expect(await cellsOf(floor.id)).toHaveLength(25);
+      await expect(resetting).resolves.toMatchObject({ width: 10, height: 8 });
+      expect(await cellsOf(floor.id)).toHaveLength(80);
     });
 
     it('throws 404 for a missing floor', async () => {
@@ -215,7 +215,7 @@ describe('FloorService', () => {
       const other = await otherFloor();
       await service.reset(floor.id);
       expect(await countOn(floor.id)).toEqual({
-        cells: 25,
+        cells: 80,
         robots: 0,
         queued: 0,
         log: 0,
@@ -286,21 +286,21 @@ describe('FloorService', () => {
       });
     });
 
-    it('deleteFloor of the last floor creates a 5x5 Open floor and makes it active at tick 0', async () => {
+    it('deleteFloor of the last floor creates a 10x8 Open floor and makes it active at tick 0', async () => {
       const floor = await create(3, 3);
       await engine.step();
       engine.toggle();
       await engine.deleteFloor(floor.id);
       const floors = await dataSource.getRepository(Floor).find();
       expect(floors).toHaveLength(1);
-      expect(floors[0]).toMatchObject({ width: 5, height: 5 });
+      expect(floors[0]).toMatchObject({ width: 10, height: 8 });
       expect(floors[0].id).not.toBe(floor.id);
       expect(engine.getState()).toMatchObject({
         floorId: floors[0].id,
         currentTick: 0,
         running: false,
       });
-      expect(await countOn(floors[0].id)).toMatchObject({ cells: 25, log: 1 });
+      expect(await countOn(floors[0].id)).toMatchObject({ cells: 80, log: 1 });
     });
 
     it('deleteFloor of an unknown floor is ignored', async () => {

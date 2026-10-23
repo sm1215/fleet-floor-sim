@@ -1,10 +1,12 @@
-import { DEFAULT_FLOOR_SIZE } from '../floor/floor.model.js';
 import {
   COMMANDS,
   type Command,
   type Direction,
   DIRECTION_NAMES,
 } from '../shared/types.js';
+
+/** Width and height of the scenario's start floor and of a bare `FLOOR` line. */
+export const SCENARIO_FLOOR_SIZE = 5;
 
 export type ScenarioCommand =
   | { kind: 'FLOOR'; width: number; height: number }
@@ -65,7 +67,7 @@ export function parseLine(line: string): ScenarioCommand | null {
       if (!parts || parts.length > 2) return null;
       const ints = toInts(parts);
       if (!ints) return null;
-      const [width = DEFAULT_FLOOR_SIZE, height = DEFAULT_FLOOR_SIZE] = ints;
+      const [width = SCENARIO_FLOOR_SIZE, height = SCENARIO_FLOOR_SIZE] = ints;
       return { kind: 'FLOOR', width, height };
     }
     case 'OBSTACLE': {
