@@ -16,11 +16,10 @@ paths:
 ## Cell clicks
 
 - Edit mode on: clicking a cell toggles it between Open and Obstacle.
-- The toggle persists: Grid calls `PATCH /cells/:id` with `{ obstacle: !cell.obstacle }`
-  through `SimulationApiService`. Update the cell in the UI only after the PATCH succeeds.
-- A cell with a robot on it cannot become an Obstacle. In edit mode, clicking it does nothing (no PATCH).
-- The API enforces this too: `PATCH /cells/:id` with `obstacle: true` on a cell with a robot is rejected
-  and nothing changes.
+- The toggle persists: Grid calls `POST /commands/obstacle { x, y }` through `SimulationApiService`;
+  the Engine toggles the cell. Flip the cell in the UI only after the request succeeds.
+- A cell with a robot on it cannot become an Obstacle. In edit mode, clicking it does nothing (no request).
+- The API enforces this too: OBSTACLE on a cell with a robot is ignored (400) and nothing changes.
 - Edit mode off: a cell click does not change Open/Obstacle (it places a robot; covered elsewhere).
 
 ## Cell appearance
@@ -50,14 +49,14 @@ Every rule above has at least one test.
 
 `grid.spec.ts` (mock `SimulationApiService`):
 
-- Edit mode on, cell click → `PATCH /cells/:id` with the flipped `obstacle`; the cell updates after success.
-- PATCH fails → the cell is unchanged.
-- Edit mode off, cell click → no obstacle PATCH.
-- Edit mode on, click a cell with a robot → no PATCH; the cell is unchanged.
+- Edit mode on, cell click → `POST /commands/obstacle` with the cell's x/y; the cell flips after success.
+- Request fails → the cell is unchanged.
+- Edit mode off, cell click → no obstacle request.
+- Edit mode on, click a cell with a robot → no request; the cell is unchanged.
 
-`apps/api/src/cell/cell.service.spec.ts`:
+`apps/api/src/engine/direct-commands.service.spec.ts`:
 
-- `obstacle: true` on a cell with a robot → rejected; the cell is unchanged.
+- OBSTACLE ON a cell with a robot → ignored; the cell is unchanged.
 
 `cell.spec.ts`:
 

@@ -10,9 +10,12 @@ import { sqliteTestDb } from './sqlite-test-db.js';
 
 describe('Floor persistence (e2e)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'fleet-'));
-  const file = join(dir, 'test.sqlite');
+  let fileCount = 0;
 
-  async function startApp(): Promise<INestApplication<App>> {
+  /** Each test gets its own DB file; pass the same file to restart. */
+  const newFile = () => join(dir, `test-${++fileCount}.sqlite`);
+
+  async function startApp(file: string): Promise<INestApplication<App>> {
     const moduleRef = await Test.createTestingModule({
       imports: [sqliteTestDb(file), ...featureModules],
     }).compile();
@@ -32,55 +35,52 @@ describe('Floor persistence (e2e)', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('PATCHed width/height are returned by GET /floors after an app restart', async () => {
-    const first = await startApp();
-    const created = await request(first.getHttpServer())
-      .post('/floors')
-      .send({ width: 5, height: 5 })
-      .expect(201);
-    const id = (created.body as { id: number }).id;
+  it('a FLOOR resize is returned by GET /floors after an app restart', async () => {
+    const file = newFile();
+    const first = await startApp(file);
     await request(first.getHttpServer())
-      .patch(`/floors/${id}`)
+      .post('/commands/floor')
+      .send({})
+      .expect(200);
+    await request(first.getHttpServer())
+      .post('/commands/floor')
       .send({ width: 7, height: 3 })
       .expect(200);
     await first.close();
 
-    const second = await startApp();
+    const second = await startApp(file);
     try {
       const floors = await request(second.getHttpServer())
         .get('/floors')
         .expect(200);
-      expect(floors.body).toContainEqual({ id, width: 7, height: 3 });
+      expect(floors.body).toMatchObject([{ width: 7, height: 3 }]);
       const cells = await request(second.getHttpServer())
         .get('/cells')
         .expect(200);
-      expect(
-        (cells.body as { floor: { id: number } }[]).filter(
-          (c) => c.floor.id === id,
-        ),
-      ).toHaveLength(21);
+      expect(cells.body).toHaveLength(21);
     } finally {
       await second.close();
     }
   });
 
-  it('POST /floors/:id/reset → 200, then GET /floors/:id is 5×5', async () => {
-    const app = await startApp();
+  it('POST /floors/:id/reset → 200, then GET /floors shows it 5×5', async () => {
+    const app = await startApp(newFile());
     try {
       const server = app.getHttpServer();
-      const created = await request(server)
-        .post('/floors')
+      await request(server)
+        .post('/commands/floor')
         .send({ width: 8, height: 6 })
-        .expect(201);
-      const id = (created.body as { id: number }).id;
+        .expect(200);
+      const floors = await request(server).get('/floors').expect(200);
+      const id = (floors.body as { id: number }[])[0].id;
       await request(server)
         .post(`/floors/${id}/reset`)
         .expect(200)
         .expect({ id, width: 5, height: 5 });
       await request(server)
-        .get(`/floors/${id}`)
+        .get('/floors')
         .expect(200)
-        .expect({ id, width: 5, height: 5 });
+        .expect([{ id, width: 5, height: 5 }]);
     } finally {
       await app.close();
     }

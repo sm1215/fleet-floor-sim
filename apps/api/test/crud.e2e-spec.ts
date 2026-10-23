@@ -5,7 +5,11 @@ import { App } from 'supertest/types.js';
 import { featureModules } from './../src/app.module.js';
 import { sqliteTestDb } from './sqlite-test-db.js';
 
-describe('CRUD (e2e)', () => {
+/**
+ * Resource routes are read-only: every change goes through POST /commands/*
+ * so it is logged (log-entry.md). Reset is the one other write.
+ */
+describe('Resource routes (e2e)', () => {
   let app: INestApplication<App>;
   let http: () => ReturnType<typeof request>;
 
@@ -23,150 +27,96 @@ describe('CRUD (e2e)', () => {
     );
     await app.init();
     http = () => request(app.getHttpServer());
+
+    await http().post('/commands/floor').send({ width: 2, height: 2 });
+    await http()
+      .post('/commands/place')
+      .send({ x: 1, y: 0, direction: 'EAST' })
+      .expect(200);
+    await http()
+      .post('/commands/queue')
+      .send({ rId: 'R1', commands: ['MOVE'] })
+      .expect(200);
   });
 
   afterAll(async () => {
     await app.close();
   });
 
-  async function roundTrip(
-    path: string,
-    body: Record<string, unknown>,
-    patch: Record<string, unknown>,
-  ): Promise<number> {
-    const created = await http().post(path).send(body).expect(201);
-    const id = (created.body as { id: number }).id;
-    expect(typeof id).toBe('number');
+  const first = async (path: string) =>
+    ((await http().get(path).expect(200)).body as { id: number }[])[0];
 
-    const list = await http().get(path).expect(200);
-    expect((list.body as { id: number }[]).map((r) => r.id)).toContain(id);
-
-    await http().get(`${path}/${id}`).expect(200);
-
-    const patched = await http().patch(`${path}/${id}`).send(patch).expect(200);
-    expect(patched.body).toMatchObject(patch);
-    return id;
-  }
-
-  async function removeAndExpect404(path: string, id: number) {
-    await http().delete(`${path}/${id}`).expect(200);
-    await http().get(`${path}/${id}`).expect(404);
-  }
-
-  it('round-trips every resource', async () => {
-    const floorId = await roundTrip(
-      '/floors',
-      { height: 5, width: 5 },
-      {
-        width: 6,
-      },
-    );
-    const cellId = await roundTrip(
-      '/cells',
-      { obstacle: false, xPosition: 19, yPosition: 19, floorId },
-      { xPosition: 18 },
-    );
-    const robotId = await roundTrip(
-      '/robots',
-      { direction: 0, cellId },
-      { direction: 1 },
-    );
-    const commandId = await roundTrip(
-      '/queued-commands',
-      { command: 'MOVE', params: '', robotId },
-      { command: 'RIGHT' },
-    );
-    const logId = await roundTrip(
-      '/log-entries',
-      { action: 'place', params: '0,0', result: 'ok' },
-      { result: 'blocked' },
-    );
-
-    // Delete children before parents: FKs are enforced.
-    await removeAndExpect404('/queued-commands', commandId);
-    await removeAndExpect404('/robots', robotId);
-    await removeAndExpect404('/cells', cellId);
-    await removeAndExpect404('/floors', floorId);
-    await removeAndExpect404('/log-entries', logId);
+  it.each([
+    ['post', '/floors'],
+    ['patch', '/floors/1'],
+    ['delete', '/floors/1'],
+    ['post', '/cells'],
+    ['patch', '/cells/1'],
+    ['delete', '/cells/1'],
+    ['post', '/robots'],
+    ['patch', '/robots/1'],
+    ['delete', '/robots/1'],
+    ['post', '/queued-commands'],
+    ['patch', '/queued-commands/1'],
+    ['delete', '/queued-commands/1'],
+    ['post', '/log-entries'],
+    ['patch', '/log-entries/1'],
+    ['delete', '/log-entries/1'],
+  ] as const)('%s %s is gone (404)', async (method, path) => {
+    await http()[method](path).send({}).expect(404);
   });
 
-  it('exposes the FK relation on reads', async () => {
-    const floor = await http().post('/floors').send({ height: 2, width: 2 });
-    const floorId = (floor.body as { id: number }).id;
-    const cell = await http()
-      .post('/cells')
-      .send({ obstacle: false, xPosition: 19, yPosition: 19, floorId })
-      .expect(201);
-    const res = await http()
-      .get(`/cells/${(cell.body as { id: number }).id}`)
+  it('the removed routes changed nothing', async () => {
+    const robots = await http().get('/robots').expect(200);
+    expect(robots.body).toHaveLength(1);
+    const log = await http().get('/log-entries').expect(200);
+    expect((log.body as { action: string }[]).map((e) => e.action)).toEqual([
+      'FLOOR',
+      'PLACE',
+      'QUEUE',
+    ]);
+  });
+
+  it.each([
+    '/floors/1',
+    '/cells/1',
+    '/robots/1',
+    '/queued-commands',
+    '/queued-commands/1',
+    '/log-entries/1',
+  ])('GET %s is gone (404)', async (path) => {
+    await http().get(path).expect(404);
+  });
+
+  it('serves the reads the web uses, with their FK relations', async () => {
+    const floor = await first('/floors');
+    expect(floor).toMatchObject({ width: 2, height: 2 });
+
+    const cell = await first('/cells');
+    expect(cell).toMatchObject({ floor: { id: floor.id } });
+
+    const robot = await first('/robots');
+    expect(robot).toMatchObject({
+      displayId: 1,
+      cell: { xPosition: 1, yPosition: 0 },
+    });
+    const queue = await http()
+      .get(`/robots/${robot.id}/queued-commands`)
       .expect(200);
-    expect(res.body).toMatchObject({ floor: { id: floorId } });
+    expect(queue.body).toMatchObject([
+      { command: 'MOVE', robot: { id: robot.id } },
+    ]);
+
+    expect(await first('/log-entries')).toMatchObject({ action: 'FLOOR' });
   });
 
-  it('rejects invalid and unknown fields', async () => {
-    await http().post('/floors').send({ height: 0, width: 5 }).expect(400);
-    await http().post('/floors').send({ height: 5, width: 21 }).expect(400);
-    await http()
-      .post('/floors')
-      .send({ height: 5, width: 5, extra: 1 })
-      .expect(400);
-    await http()
-      .post('/queued-commands')
-      .send({ command: 'JUMP', params: '', robotId: 1 })
-      .expect(400);
-    await http().post('/robots').send({ direction: 4, cellId: 1 }).expect(400);
+  it('GET /robots/:id/queued-commands: 400 for a non-integer id, [] for a missing robot', async () => {
+    await http().get('/robots/abc/queued-commands').expect(400);
+    await http().get('/robots/9999/queued-commands').expect(200, []);
   });
 
-  it('rejects null in PATCH bodies', async () => {
-    const floor = await http().post('/floors').send({ height: 3, width: 3 });
-    const floorId = (floor.body as { id: number }).id;
-    const cell = await http()
-      .post('/cells')
-      .send({ obstacle: false, xPosition: 19, yPosition: 19, floorId });
-    const cellId = (cell.body as { id: number }).id;
-    const robot = await http().post('/robots').send({ direction: 0, cellId });
-    const robotId = (robot.body as { id: number }).id;
-    const command = await http()
-      .post('/queued-commands')
-      .send({ command: 'MOVE', params: '', robotId });
-    const commandId = (command.body as { id: number }).id;
-    const log = await http()
-      .post('/log-entries')
-      .send({ action: 'a', params: 'p', result: 'r' });
-    const logId = (log.body as { id: number }).id;
-
-    const cases: [string, Record<string, null>][] = [
-      [`/floors/${floorId}`, { width: null }],
-      [`/floors/${floorId}`, { height: null }],
-      [`/cells/${cellId}`, { floorId: null }],
-      [`/cells/${cellId}`, { obstacle: null }],
-      [`/cells/${cellId}`, { xPosition: null }],
-      [`/cells/${cellId}`, { yPosition: null }],
-      [`/robots/${robotId}`, { cellId: null }],
-      [`/robots/${robotId}`, { direction: null }],
-      [`/queued-commands/${commandId}`, { robotId: null }],
-      [`/queued-commands/${commandId}`, { command: null }],
-      [`/queued-commands/${commandId}`, { params: null }],
-      [`/log-entries/${logId}`, { action: null }],
-      [`/log-entries/${logId}`, { params: null }],
-      [`/log-entries/${logId}`, { result: null }],
-    ];
-    for (const [path, body] of cases) {
-      const res = await http().patch(path).send(body);
-      expect({ path, body, status: res.status }).toEqual({
-        path,
-        body,
-        status: 400,
-      });
-    }
-    const cellRes = await http().get(`/cells/${cellId}`).expect(200);
-    expect(cellRes.body).toMatchObject({ floor: { id: floorId } });
-  });
-
-  it('returns 400 for a non-integer id and 404 for a missing one', async () => {
-    await http().get('/floors/abc').expect(400);
-    await http().get('/floors/9999').expect(404);
-    await http().patch('/floors/9999').send({ width: 3 }).expect(404);
-    await http().delete('/floors/9999').expect(404);
+  it('POST /floors/:id/reset: 400 for a non-integer id, 404 for a missing floor', async () => {
+    await http().post('/floors/abc/reset').expect(400);
+    await http().post('/floors/9999/reset').expect(404);
   });
 });

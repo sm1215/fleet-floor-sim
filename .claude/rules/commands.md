@@ -15,6 +15,9 @@ paths:
 
 One `POST /commands/<name>` route per command. Params come in the body and are validated by a DTO. Then the route calls the matching Engine method (`engine.md`). All command logic lives in the Engine. Robot command routes (LEFT / RIGHT / MOVE / QUEUE) only enqueue.
 
+- Success → `200 { ok: true }`. The web refetches the state that changed.
+- Only the FLOOR, OBSTACLE, PLACE, QUEUE and DELETE routes exist so far. LEFT / RIGHT / MOVE / TICK / REPORT have no route yet; the web enqueues through `/commands/queue`.
+
 | Command  | Route                     | Params                                          |
 | -------- | ------------------------- | ----------------------------------------------- |
 | LEFT     | `POST /commands/left`     | `rId`                                           |
@@ -22,8 +25,9 @@ One `POST /commands/<name>` route per command. Params come in the body and are v
 | MOVE     | `POST /commands/move`     | `rId`                                           |
 | FLOOR    | `POST /commands/floor`    | `width` (int, default 5), `height` (int, default 5) |
 | OBSTACLE | `POST /commands/obstacle` | `x` (int, required), `y` (int, required)        |
-| PLACE    | `POST /commands/place`    | `rId`, `x` (int), `y` (int), `direction`        |
+| PLACE    | `POST /commands/place`    | `rId` (optional), `x` (int), `y` (int), `direction` |
 | QUEUE    | `POST /commands/queue`    | `rId`, `commands` (one or more of `LEFT` / `RIGHT` / `MOVE`) |
+| DELETE   | `POST /commands/delete`   | `rId`                                           |
 | TICK     | `POST /commands/tick`     | `amount` (int, default 1)                       |
 | REPORT   | `POST /commands/report`   | none                                            |
 
@@ -76,17 +80,24 @@ A `MOVE` targets the cell one step forward in the robot's direction (N = +y, E =
 ## OBSTACLE
 
 - Requires int `x` and `y`. Missing → ignored.
-- Sets `obstacle = true` on the cell with that x/y. No matching cell → ignored.
+- Toggles the cell with that x/y between Open and Obstacle. No matching cell → ignored.
+- Toggling ON a cell with a robot → ignored.
 
 ## PLACE
 
-- Requires `rId`, int `x`, int `y`, and `direction`.
+- Requires int `x`, int `y`, and `direction`. `rId` is optional.
+- No `rId` → create a new robot whose `displayId` is the highest `displayId` in the DB + 1 (1 when there are no robots).
 - `direction` is `NORTH` / `EAST` / `SOUTH` / `WEST` (uppercase), mapped to the `Direction` enum in
   `apps/web/src/app/models/direction.ts` (0 N, 1 E, 2 S, 3 W).
-- Find the robot by `displayId`:
+- With `rId`, find the robot by `displayId`:
   - Found → move it to the cell at x/y and set its direction.
   - Not found → create it on the cell at x/y with that direction.
 - Missing or invalid params, or no cell at x/y → ignored.
+
+## DELETE
+
+- Requires `rId`. Removes the robot and its queued commands.
+- Unknown robot → ignored.
 
 ## TICK
 
@@ -120,7 +131,10 @@ Service / DTO specs:
 - Each endpoint's ignored cases → 400 with a descriptive message, nothing changed.
 - LEFT / RIGHT / MOVE / QUEUE enqueue the right command. QUEUE enqueues multiple commands in order; it rejects the whole request if any command is lowercase or unknown.
 - FLOOR: defaults to 5×5; creates when missing; updates when present.
-- OBSTACLE: sets `obstacle = true`; missing x/y or no cell → ignored.
+- Success → `200 { ok: true }`.
+- OBSTACLE: toggles Open ↔ Obstacle; ON a robot's cell, missing x/y or no cell → ignored.
 - PLACE: creates a new robot; updates the cell and direction of an existing `displayId`; accepts only uppercase direction names.
+- PLACE without `rId`: `displayId` = max + 1 (R1, R3 → R4); no robots → 1.
+- DELETE: removes the robot and its queue; unknown robot → ignored.
 - TICK: defaults to 1; calls `step()` `amount` times.
 - REPORT: prints the shared report (format tests live in `log-entry.md`).

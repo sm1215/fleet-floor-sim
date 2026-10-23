@@ -6,14 +6,21 @@ import { Robot } from './robot';
 describe('Robot', () => {
   async function render(direction: Direction, selected?: boolean) {
     const fixture = TestBed.createComponent(Robot);
-    fixture.componentRef.setInput('robot', { id: 12, direction, cellId: 1, x: 0, y: 0 });
+    fixture.componentRef.setInput('robot', {
+      id: 5,
+      displayId: 12,
+      direction,
+      cellId: 1,
+      x: 0,
+      y: 0,
+    });
     if (selected !== undefined) fixture.componentRef.setInput('selected', selected);
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
     return { fixture, el, box: el.querySelector<HTMLElement>('.robot')! };
   }
 
-  it('shows the ID as an uppercase R plus the database Id', async () => {
+  it('shows the ID as an uppercase R plus displayId, not the database Id', async () => {
     const { el } = await render(Direction.North);
     expect(el.querySelector('.robot-id')?.textContent?.trim()).toBe('R12');
   });
@@ -35,7 +42,14 @@ describe('Robot', () => {
   });
 
   it('x/y are read-only, taken from the cell', () => {
-    const robot: RobotModel = { id: 1, direction: Direction.North, cellId: 4, x: 2, y: 3 };
+    const robot: RobotModel = {
+      id: 1,
+      displayId: 1,
+      direction: Direction.North,
+      cellId: 4,
+      x: 2,
+      y: 3,
+    };
     // @ts-expect-error x is read-only
     robot.x = 5;
     // @ts-expect-error y is read-only

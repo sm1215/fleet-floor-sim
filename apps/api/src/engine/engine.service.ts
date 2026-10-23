@@ -4,11 +4,14 @@ import {
   InternalServerErrorException,
   OnModuleDestroy,
 } from '@nestjs/common';
+import { DataSource, EntityManager } from 'typeorm';
+import type { LogAction } from '../log-entry/log-params.js';
+import { LogEntryService } from '../log-entry/log-entry.service.js';
 import type { NextCommand } from '../queue/next-command.js';
 import { QueueService } from '../queue/queue.service.js';
 import type { Command, Direction } from '../shared/types.js';
 import { WriteLock } from '../shared/write-lock.js';
-import type { CommandResult } from './command-result.js';
+import type { CommandResult, Recorder } from './command-result.js';
 import { DirectCommandsService } from './direct-commands.service.js';
 import { EngineCommandsService } from './engine-commands.service.js';
 
@@ -50,6 +53,8 @@ export class EngineService implements OnModuleDestroy {
     private readonly commands: EngineCommandsService,
     private readonly direct: DirectCommandsService,
     private readonly lock: WriteLock,
+    private readonly logEntries: LogEntryService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /** Current state; the returned errors are cleared. */
@@ -99,26 +104,51 @@ export class EngineService implements OnModuleDestroy {
     return { ok: true };
   }
 
+  // Commands write their entry inside their own transaction (`record`): a
+  // failed write rolls the command back, and the entry lands under the lock.
+
   floor(width: number, height: number): Promise<CommandResult> {
-    return this.direct.floor(width, height);
+    return this.direct.floor(width, height, this.record);
   }
 
   obstacle(x: number, y: number): Promise<CommandResult> {
-    return this.direct.obstacle(x, y);
+    return this.direct.obstacle(x, y, this.record);
   }
 
+  /** Without a displayId, places a new robot (displayId = highest + 1). */
   place(
-    displayId: number,
+    displayId: number | undefined,
     x: number,
     y: number,
     direction: Direction,
   ): Promise<CommandResult> {
-    return this.direct.place(displayId, x, y, direction);
+    return this.direct.place(displayId, x, y, direction, this.record);
   }
 
   queue(displayId: number, commands: Command[]): Promise<CommandResult> {
-    return this.direct.queue(displayId, commands);
+    return this.direct.queue(displayId, commands, this.record);
   }
+
+  delete(displayId: number): Promise<CommandResult> {
+    return this.direct.delete(displayId, this.record);
+  }
+
+  /**
+   * Writes one log entry inside the given transaction, unless running a
+   * scenario (log-entry.md).
+   */
+  async log(
+    manager: EntityManager,
+    action: LogAction,
+    params: string,
+    result = 'OK',
+  ): Promise<void> {
+    if (this.scenarioMode) return;
+    await this.logEntries.create({ action, params, result }, manager);
+  }
+
+  private readonly record: Recorder = (manager, { action, params }) =>
+    this.log(manager, action, params);
 
   report(): Promise<string[]> {
     return this.direct.report();
@@ -158,25 +188,39 @@ export class EngineService implements OnModuleDestroy {
 
   /**
    * Advances one tick: waits for every robot's queue result, applies LEFT /
-   * RIGHT, then resolves all MOVEs together.
+   * RIGHT, then resolves all MOVEs together. The tick and its TICK entry
+   * commit together; on any failure nothing is saved and the tick number
+   * stays where it was.
    */
   private advance(): Promise<void> {
-    return this.lock.run(() => this.applyTick());
+    return this.lock.run(async () => {
+      const tick = this.currentTick + 1;
+      await this.dataSource.transaction((manager) =>
+        this.applyTick(manager, tick),
+      );
+      this.currentTick = tick;
+    });
   }
 
-  private async applyTick(): Promise<void> {
-    this.currentTick += 1;
-    const taken = await Promise.all(await this.queueService.doNext());
+  private async applyTick(manager: EntityManager, tick: number): Promise<void> {
+    const taken = await Promise.all(await this.queueService.doNext(manager));
     const next = taken.filter((item): item is NextCommand => item !== null);
     for (const { robot, command } of next) {
-      if (command === 'LEFT') await this.commands.left(robot.id);
-      if (command === 'RIGHT') await this.commands.right(robot.id);
+      if (command === 'LEFT') await this.commands.left(robot.id, manager);
+      if (command === 'RIGHT') await this.commands.right(robot.id, manager);
     }
     // Block reasons are returned but not reported anywhere yet.
     await this.commands.moveAll(
       next
         .filter((item) => item.command === 'MOVE')
         .map((item) => item.robot.id),
+      manager,
+    );
+    await this.log(
+      manager,
+      'TICK',
+      String(tick),
+      (await this.direct.report(manager)).join('\n'),
     );
   }
 

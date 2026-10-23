@@ -17,6 +17,7 @@ paths:
 - A robot with an empty queue, or whose command fails to parse, resolves to `null`.
 - `doNext()` does not execute commands. The Engine's `step()` calls it and executes the returned commands (see `engine.md` and `commands.md`).
 - Each command that is taken is deleted from the DB whether it later succeeds or fails, including commands that fail to parse.
+- Robots are taken one at a time, in `displayId` order. If one fails, the rest reject without touching the DB, so nothing is deleted after a tick's transaction rolls back (see `log-entry.md`).
 
 ## Testing
 
@@ -32,3 +33,4 @@ Every behavioral rule above has at least one test. Add or change a rule → add 
 - `LEFT` / `RIGHT` / `MOVE` are parsed and returned with their robot.
 - A command that fails to parse resolves to `null`.
 - Every command taken is deleted from the DB, including one that fails to parse.
+- A dequeue failing mid-tick leaves every other robot's queue unchanged, even after the rollback (`engine-logging.spec.ts`).

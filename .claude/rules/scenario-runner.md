@@ -47,6 +47,7 @@ Plain text, one command per line. Lines are split on `\r?\n`, so CRLF and LF bot
 
 - Missing optional params use the `commands.md` defaults (`FLOOR` 5,5, `TICK` 1).
 - `QUEUE` takes one or more space-separated commands, enqueued in order.
+- `OBSTACLE` toggles the cell (Open ↔ Obstacle), as in `commands.md`.
 
 ## Invalid lines
 

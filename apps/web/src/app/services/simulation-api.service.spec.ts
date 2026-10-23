@@ -30,22 +30,6 @@ describe('SimulationApiService', () => {
     req.flush([]);
   });
 
-  it('createFloor → POST /floors with the size', () => {
-    service.createFloor({ width: 5, height: 5 }).subscribe();
-    const req = http.expectOne(`${api}/floors`);
-    expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ width: 5, height: 5 });
-    req.flush({ id: 1, width: 5, height: 5 });
-  });
-
-  it('updateFloor → PATCH /floors/:id with the size', () => {
-    service.updateFloor(3, { width: 7, height: 2 }).subscribe();
-    const req = http.expectOne(`${api}/floors/3`);
-    expect(req.request.method).toBe('PATCH');
-    expect(req.request.body).toEqual({ width: 7, height: 2 });
-    req.flush({ id: 3, width: 7, height: 2 });
-  });
-
   it('resetFloor → POST /floors/:id/reset', () => {
     service.resetFloor(1).subscribe();
     const req = http.expectOne(`${api}/floors/1/reset`);
@@ -71,45 +55,22 @@ describe('SimulationApiService', () => {
     expect(result).toEqual([{ id: 11, obstacle: true, xPosition: 1, yPosition: 0, floorId: 2 }]);
   });
 
-  it('updateCell → PATCH /cells/:id with the change; maps floor.id to floorId', () => {
-    let result: Cell | undefined;
-    service.updateCell(4, { obstacle: true }).subscribe((cell) => (result = cell));
-    const req = http.expectOne(`${api}/cells/4`);
-    expect(req.request.method).toBe('PATCH');
-    expect(req.request.body).toEqual({ obstacle: true });
-    req.flush({
-      id: 4,
-      obstacle: true,
-      xPosition: 1,
-      yPosition: 2,
-      floor: { id: 1, width: 5, height: 5 },
-    });
-    expect(result).toEqual({ id: 4, obstacle: true, xPosition: 1, yPosition: 2, floorId: 1 });
-  });
-
-  it('getRobots → GET /robots; maps the cell to cellId, x and y', () => {
+  it('getRobots → GET /robots; maps displayId and the cell to cellId, x and y', () => {
     let result: Robot[] = [];
     service.getRobots().subscribe((robots) => (result = robots));
     const req = http.expectOne(`${api}/robots`);
     expect(req.request.method).toBe('GET');
     req.flush([
-      { id: 12, direction: 1, cell: { id: 7, obstacle: false, xPosition: 2, yPosition: 3 } },
+      {
+        id: 12,
+        displayId: 4,
+        direction: 1,
+        cell: { id: 7, obstacle: false, xPosition: 2, yPosition: 3 },
+      },
     ]);
-    expect(result).toEqual([{ id: 12, direction: Direction.East, cellId: 7, x: 2, y: 3 }]);
-  });
-
-  it('createRobot → POST /robots with cellId and North; maps the result', () => {
-    let result: Robot | undefined;
-    service.createRobot(7).subscribe((robot) => (result = robot));
-    const req = http.expectOne(`${api}/robots`);
-    expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ cellId: 7, direction: Direction.North });
-    req.flush({
-      id: 13,
-      direction: 0,
-      cell: { id: 7, obstacle: false, xPosition: 2, yPosition: 3 },
-    });
-    expect(result).toEqual({ id: 13, direction: Direction.North, cellId: 7, x: 2, y: 3 });
+    expect(result).toEqual([
+      { id: 12, displayId: 4, direction: Direction.East, cellId: 7, x: 2, y: 3 },
+    ]);
   });
 
   it('getQueuedCommands → GET /robots/:id/queued-commands; maps robot.id to robotId', () => {
@@ -125,25 +86,6 @@ describe('SimulationApiService', () => {
       { id: 1, command: 'MOVE', params: null, robotId: 5 },
       { id: 2, command: 'LEFT', params: null, robotId: 5 },
     ]);
-  });
-
-  it('deleteRobot → DELETE /robots/:id', () => {
-    let done = false;
-    service.deleteRobot(5).subscribe(() => (done = true));
-    const req = http.expectOne(`${api}/robots/5`);
-    expect(req.request.method).toBe('DELETE');
-    req.flush(null);
-    expect(done).toBe(true);
-  });
-
-  it('createQueuedCommand → POST /queued-commands with robotId and command', () => {
-    let result: QueuedCommand | undefined;
-    service.createQueuedCommand(5, 'RIGHT').subscribe((command) => (result = command));
-    const req = http.expectOne(`${api}/queued-commands`);
-    expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ robotId: 5, command: 'RIGHT' });
-    req.flush({ id: 3, command: 'RIGHT', params: null, robot: { id: 5 } });
-    expect(result).toEqual({ id: 3, command: 'RIGHT', params: null, robotId: 5 });
   });
 
   const state = { currentTick: 1, tickRate: 1000, running: false, errors: [] };
@@ -167,5 +109,61 @@ describe('SimulationApiService', () => {
     const req = http.expectOne(`${api}/engine/toggle`);
     expect(req.request.method).toBe('POST');
     req.flush({ ...state, running: true });
+  });
+
+  describe('commands', () => {
+    function expectCommand(route: string, body: unknown) {
+      const req = http.expectOne(`${api}/commands/${route}`);
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual(body);
+      req.flush({ ok: true });
+    }
+
+    it('floorCommand → POST /commands/floor with the size', () => {
+      service.floorCommand({ width: 8, height: 3 }).subscribe();
+      expectCommand('floor', { width: 8, height: 3 });
+    });
+
+    it('obstacleCommand → POST /commands/obstacle with x and y', () => {
+      service.obstacleCommand(2, 3).subscribe();
+      expectCommand('obstacle', { x: 2, y: 3 });
+    });
+
+    it('placeCommand without displayId → POST /commands/place with no rId', () => {
+      service.placeCommand(2, 3, Direction.North).subscribe();
+      expectCommand('place', { x: 2, y: 3, direction: 'NORTH' });
+    });
+
+    it('placeCommand with displayId → rId R<displayId> and the direction name', () => {
+      service.placeCommand(0, 1, Direction.West, 4).subscribe();
+      expectCommand('place', { x: 0, y: 1, direction: 'WEST', rId: 'R4' });
+    });
+
+    it('queueCommand → POST /commands/queue with rId and one command', () => {
+      service.queueCommand(3, 'LEFT').subscribe();
+      expectCommand('queue', { rId: 'R3', commands: ['LEFT'] });
+    });
+
+    it('deleteCommand → POST /commands/delete with rId', () => {
+      service.deleteCommand(7).subscribe();
+      expectCommand('delete', { rId: 'R7' });
+    });
+
+    it('a command emits once with no value', () => {
+      const next = vi.fn();
+      service.deleteCommand(7).subscribe(next);
+      http.expectOne(`${api}/commands/delete`).flush({ ok: true });
+      expect(next).toHaveBeenCalledExactlyOnceWith(undefined);
+    });
+  });
+
+  it('getLogEntries → GET /log-entries', () => {
+    const entries = [{ id: 1, action: 'TICK', params: '1', result: 'EMPTY' }];
+    let result: unknown;
+    service.getLogEntries().subscribe((e) => (result = e));
+    const req = http.expectOne(`${api}/log-entries`);
+    expect(req.request.method).toBe('GET');
+    req.flush(entries);
+    expect(result).toEqual(entries);
   });
 });

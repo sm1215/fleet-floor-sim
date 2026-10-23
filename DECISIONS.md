@@ -28,3 +28,6 @@
 
 #### Scenario Runner TICK command doesn't require an upper bound
 > I'm specifying one for 99 so the program doesn't hang
+
+#### Scenario Runner instructions only specify that an OBSTACLE command should toggle on an OBSTACLE
+> I am adding the ability for OBSTACLE to be toggled on or off. The toggle and respective state should be recorded as well.

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { QueuedCommand, Robot } from '../../database/entities/index.js';
 import { COMMANDS, type Command } from '../shared/types.js';
 import type { NextCommand } from './next-command.js';
@@ -23,23 +23,37 @@ export class QueueService {
    * One promise per robot, in ascending displayId order. Each takes the
    * robot's head command (deleted whether or not it parses) and resolves to
    * it, or to null when the queue is empty or the command does not parse.
-   * Commands are not executed here.
+   * Commands are not executed here. Inside a tick, pass its transaction.
    */
-  async doNext(): Promise<Promise<NextCommand | null>[]> {
-    const robots = await this.robots.find({
+  async doNext(
+    manager?: EntityManager,
+  ): Promise<Promise<NextCommand | null>[]> {
+    const robots = manager?.getRepository(Robot) ?? this.robots;
+    const commands = manager?.getRepository(QueuedCommand) ?? this.commands;
+    const all = await robots.find({
       order: { displayId: 'ASC' },
       relations: { cell: true },
     });
-    return robots.map((robot) => this.takeNext(robot));
+    // One robot at a time. After a failure the rest reject without touching
+    // the DB, so nothing is deleted once a tick's transaction rolls back.
+    let previous: Promise<unknown> = Promise.resolve();
+    return all.map((robot) => {
+      const next = previous.then(() => this.takeNext(commands, robot));
+      previous = next;
+      return next;
+    });
   }
 
-  private async takeNext(robot: Robot): Promise<NextCommand | null> {
-    const head = await this.commands.findOne({
+  private async takeNext(
+    commands: Repository<QueuedCommand>,
+    robot: Robot,
+  ): Promise<NextCommand | null> {
+    const head = await commands.findOne({
       where: { robot: { id: robot.id } },
       order: { id: 'ASC' },
     });
     if (!head) return null;
-    await this.commands.delete(head.id);
+    await commands.delete(head.id);
     const command = parseCommand(head.command);
     return command ? { robot, command } : null;
   }

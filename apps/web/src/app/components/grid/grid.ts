@@ -23,6 +23,7 @@ import {
   tap,
 } from 'rxjs';
 import { Cell as CellModel } from '../../models/cell.model';
+import { Direction } from '../../models/direction';
 import { Floor, FloorSize } from '../../models/floor.model';
 import { Robot } from '../../models/robot.model';
 import { SimulationApiService } from '../../services/simulation-api.service';
@@ -107,7 +108,9 @@ export class Grid implements OnInit {
         switchMap((floors) =>
           floors.length > 0
             ? of(floors[0])
-            : this.api.createFloor({ width: DEFAULT_SIZE, height: DEFAULT_SIZE }),
+            : this.api
+                .floorCommand({ width: DEFAULT_SIZE, height: DEFAULT_SIZE })
+                .pipe(switchMap(() => this.currentFloor())),
         ),
         switchMap((floor) => this.withCells(floor)),
         takeUntilDestroyed(this.destroyRef),
@@ -122,12 +125,14 @@ export class Grid implements OnInit {
     this.sizeChanges
       .pipe(
         switchMap((size) =>
-          this.api.updateFloor(this.floor()!.id, size).pipe(
+          this.api.floorCommand(size).pipe(
+            switchMap(() => this.currentFloor()),
             switchMap((floor) => this.withCells(floor)),
             catchError((err: unknown) => {
               this.syncSliders();
-              const conflict = err instanceof HttpErrorResponse && err.status === 409;
-              this.gridError.emit(conflict ? RESIZE_ERROR : SERVER_ERROR);
+              // The Engine ignores a resize with no room for the robots (400).
+              const noRoom = err instanceof HttpErrorResponse && err.status === 400;
+              this.gridError.emit(noRoom ? RESIZE_ERROR : SERVER_ERROR);
               return EMPTY;
             }),
             takeUntil(this.resets),
@@ -165,26 +170,41 @@ export class Grid implements OnInit {
 
   /**
    * Edit mode on: toggles Open/Obstacle, unless a robot is on the cell.
-   * Edit mode off: places a robot on an empty Open cell.
+   * Edit mode off: moves the selected robot to an empty Open cell, or places
+   * a new robot facing North when none is selected.
    */
   protected onCellClick(cell: CellModel): void {
     if (this.robotsByCell().has(cell.id)) return;
     if (this.editMode()) {
       this.api
-        .updateCell(cell.id, { obstacle: !cell.obstacle })
+        .obstacleCommand(cell.xPosition, cell.yPosition)
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe({
-          next: (updated) =>
-            this.cells.update((cells) => cells.map((c) => (c.id === updated.id ? updated : c))),
+          next: () =>
+            this.cells.update((cells) =>
+              cells.map((c) => (c.id === cell.id ? { ...c, obstacle: !c.obstacle } : c)),
+            ),
           // The cell stays as it was.
           error: () => undefined,
         });
     } else if (!cell.obstacle) {
-      this.api
-        .createRobot(cell.id)
-        .pipe(takeUntilDestroyed(this.destroyRef))
+      const id = this.selectedRobotId();
+      const selected = id === null ? undefined : this.findRobot(id);
+      const place = selected
+        ? this.api.placeCommand(
+            cell.xPosition,
+            cell.yPosition,
+            selected.direction,
+            selected.displayId,
+          )
+        : this.api.placeCommand(cell.xPosition, cell.yPosition, Direction.North);
+      place
+        .pipe(
+          switchMap(() => this.api.getRobots()),
+          takeUntilDestroyed(this.destroyRef),
+        )
         .subscribe({
-          next: (robot) => this.robots.update((robots) => [...robots, robot]),
+          next: (robots) => this.robots.set(robots),
           error: () => this.gridError.emit(PLACE_ERROR),
         });
     }
@@ -202,9 +222,19 @@ export class Grid implements OnInit {
     );
   }
 
+  /** The shown robot with this Id; commands address it by its displayId. */
+  findRobot(id: number): Robot | undefined {
+    return this.robots().find((robot) => robot.id === id);
+  }
+
   /** Drops a deleted robot from the grid. */
   removeRobot(id: number): void {
     this.robots.update((robots) => robots.filter((robot) => robot.id !== id));
+  }
+
+  /** The single floor, as saved after a FLOOR command. */
+  private currentFloor(): Observable<Floor> {
+    return this.api.getFloors().pipe(map((floors) => floors[0]));
   }
 
   /** Loads cells, then robots: a resize can move robots to other cells. */

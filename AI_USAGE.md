@@ -129,3 +129,15 @@ User asked to fix review findings, no commit. Added WriteLock serializing ticks,
 User asked to add the write lock to FloorService resize and reset. update() transaction now runs under WriteLock; reset() takes the lock after engine.reset() (which waits for an in-flight tick that itself needs the lock, so locking first would deadlock). Tests: update/reset wait for the lock; a 409 resize releases it. Not committed.
 
 User asked to run all 5 scenarios via npm run scenario, one subagent each, sequentially, and compare to scenarios/expected. All 5 match on content. Only byte differences: expected files use CRLF with no final newline; stdout uses LF with a trailing newline. No files changed.
+
+User asked for a LogEntry implementation plan from .claude/plans/log-entry-plan.md (now: log after the Engine runs a command). Decided: EngineService.log() owns writes; CRUD services call it after successful writes; scenarioMode skips all logging; TICK result is report lines joined by newline; modal line "ACTION params: result"; rules files updated first. Saved .claude/plans/log-entry-impl-plan.md.
+
+User revised the LogEntry plan: the web routes floor create/resize, obstacle, place, move-selected-robot, queue and delete through new POST /commands/* Engine routes, and the Engine logs each success. OBSTACLE now toggles; PLACE without rId uses DB max displayId + 1; new Engine DELETE command. Routes return {ok:true} and the web refetches. Rewrote .claude/plans/log-entry-impl-plan.md.
+
+User asked to execute log-entry-impl-plan.md. Done inline on main, not committed. Added POST /commands/{floor,obstacle,place,queue,delete} + DTOs; Engine logs each success and every TICK (skipped in scenarioMode); OBSTACLE toggles; PLACE w/o rId = max displayId+1; Engine delete. Web uses command routes, refetches, shows R<displayId>, moves selected robot on cell click; Log modal lists entries. Ruling: Grid.findRobot(id) gives App the displayId.
+
+User asked to fix the two minor log issues and roll back any change whose log write fails. Each command now writes its entry in its own transaction via a recorder (DirectCommandsService); the whole tick (dequeue, turns, moves, TICK entry) runs in one transaction. A failed write rolls back and throws (500); currentTick advances only on commit. Entries now follow save order. New engine-logging.spec.ts. Not committed.
+
+User asked to fix review #1 and remove unused CRUD write routes. doNext now dequeues one robot at a time (a failure stops the rest, so nothing is deleted after a rollback). Removed POST/PATCH/DELETE on floors, cells, robots, queued-commands, log-entries (kept reads + reset); resize tests moved to floor-resize.spec.ts via Engine FLOOR; e2e uses /commands. Deleting old DTO files was blocked by permissions. Not committed.
+
+User asked to remove the unused read routes too. Removed GET /floors/:id, /cells/:id, /robots/:id, /queued-commands, /queued-commands/:id, /log-entries/:id and their service methods; QueuedCommandController deleted (user ran rm; my deletes were blocked). FloorService.findOne now private (reset uses it). e2e asserts the removed reads 404. Rules updated. Not committed.

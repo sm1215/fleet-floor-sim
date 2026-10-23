@@ -1,8 +1,4 @@
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import {
@@ -14,11 +10,10 @@ import {
 } from '../../database/entities/index.js';
 import { EngineService } from '../engine/engine.service.js';
 import { WriteLock } from '../shared/write-lock.js';
-import { CreateFloorDto } from './dto/create-floor.dto.js';
-import { UpdateFloorDto } from './dto/update-floor.dto.js';
-import { insertOpenCells, resizeFloor } from './floor-writes.js';
-import { DEFAULT_FLOOR_SIZE, RESIZE_NO_ROOM } from './floor.model.js';
+import { insertOpenCells } from './floor-writes.js';
+import { DEFAULT_FLOOR_SIZE } from './floor.model.js';
 
+/** Reads and Reset. Create and resize go through POST /commands/floor. */
 @Injectable()
 export class FloorService {
   constructor(
@@ -27,14 +22,6 @@ export class FloorService {
     private readonly engine: EngineService,
     private readonly lock: WriteLock,
   ) {}
-
-  create(dto: CreateFloorDto): Promise<Floor> {
-    return this.dataSource.transaction(async (manager) => {
-      const floor = await manager.getRepository(Floor).save(dto);
-      await insertOpenCells(manager, floor);
-      return floor;
-    });
-  }
 
   /**
    * Pauses the engine at tick 0, then empties the floor (queued commands,
@@ -80,31 +67,9 @@ export class FloorService {
     return this.repo.find();
   }
 
-  async findOne(id: number): Promise<Floor> {
+  private async findOne(id: number): Promise<Floor> {
     const floor = await this.repo.findOneBy({ id });
     if (!floor) throw new NotFoundException(`Floor ${id} not found`);
     return floor;
-  }
-
-  async update(id: number, dto: UpdateFloorDto): Promise<Floor> {
-    const floor = await this.findOne(id);
-    const size = {
-      width: dto.width ?? floor.width,
-      height: dto.height ?? floor.height,
-    };
-    await this.write(async (manager) => {
-      if (!(await resizeFloor(manager, id, size))) {
-        throw new ConflictException(RESIZE_NO_ROOM);
-      }
-    });
-    return this.findOne(id);
-  }
-
-  async remove(id: number): Promise<void> {
-    const floor = await this.findOne(id);
-    await this.dataSource.transaction(async (manager) => {
-      await manager.getRepository(Cell).delete({ floor: { id } });
-      await manager.getRepository(Floor).remove(floor);
-    });
   }
 }

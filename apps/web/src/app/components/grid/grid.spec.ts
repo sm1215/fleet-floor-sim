@@ -25,7 +25,7 @@ function makeCells(floor: Floor): Cell[] {
 }
 
 function robot(id: number, cellId: number, x: number, y: number, direction = Direction.North) {
-  return { id, direction, cellId, x, y };
+  return { id, displayId: id, direction, cellId, x, y };
 }
 
 describe('Grid', () => {
@@ -33,28 +33,33 @@ describe('Grid', () => {
   let server: Floor | null;
   let api: {
     getFloors: ReturnType<typeof vi.fn<() => Observable<Floor[]>>>;
-    createFloor: ReturnType<typeof vi.fn<(size: FloorSize) => Observable<Floor>>>;
-    updateFloor: ReturnType<typeof vi.fn<(id: number, size: FloorSize) => Observable<Floor>>>;
+    floorCommand: ReturnType<typeof vi.fn<(size: FloorSize) => Observable<void>>>;
     resetFloor: ReturnType<typeof vi.fn<(id: number) => Observable<Floor>>>;
     getCells: ReturnType<typeof vi.fn<(floorId: number) => Observable<Cell[]>>>;
-    updateCell: ReturnType<
-      typeof vi.fn<(id: number, change: Pick<Cell, 'obstacle'>) => Observable<Cell>>
-    >;
+    obstacleCommand: ReturnType<typeof vi.fn<(x: number, y: number) => Observable<void>>>;
     getRobots: ReturnType<typeof vi.fn<() => Observable<Robot[]>>>;
-    createRobot: ReturnType<typeof vi.fn<(cellId: number) => Observable<Robot>>>;
+    placeCommand: ReturnType<
+      typeof vi.fn<
+        (x: number, y: number, direction: Direction, displayId?: number) => Observable<void>
+      >
+    >;
   };
   // The robots as the mocked API currently stores them.
   let robots: Robot[];
   // Ids of the cells the mocked API stores as Obstacles.
   let obstacleIds: number[];
+  const cellIdAt = (x: number, y: number) =>
+    makeCells(server!).find((c) => c.xPosition === x && c.yPosition === y)!.id;
 
   beforeEach(() => {
     server = null;
     obstacleIds = [];
     api = {
       getFloors: vi.fn(() => of(server ? [server] : [])),
-      createFloor: vi.fn((size: FloorSize) => of((server = { id: 1, ...size }))),
-      updateFloor: vi.fn((id: number, size: FloorSize) => of((server = { id, ...size }))),
+      floorCommand: vi.fn((size: FloorSize) => {
+        server = { id: server?.id ?? 1, ...size };
+        return of(undefined);
+      }),
       resetFloor: vi.fn((id: number) => {
         robots = [];
         obstacleIds = [];
@@ -67,13 +72,19 @@ describe('Grid', () => {
             : [],
         ),
       ),
-      updateCell: vi.fn((id: number, change: Pick<Cell, 'obstacle'>) =>
-        of({ ...makeCells(server!).find((c) => c.id === id)!, ...change }),
-      ),
+      obstacleCommand: vi.fn((x: number, y: number) => {
+        const id = cellIdAt(x, y);
+        obstacleIds = obstacleIds.includes(id)
+          ? obstacleIds.filter((o) => o !== id)
+          : [...obstacleIds, id];
+        return of(undefined);
+      }),
       getRobots: vi.fn(() => of(robots)),
-      createRobot: vi.fn((cellId: number) => {
-        const cell = makeCells(server!).find((c) => c.id === cellId)!;
-        return of(robot(40, cellId, cell.xPosition, cell.yPosition));
+      // A new robot gets displayId 40 (id 40); an existing one moves and turns.
+      placeCommand: vi.fn((x: number, y: number, direction: Direction, displayId?: number) => {
+        const moved = robot(displayId ?? 40, cellIdAt(x, y), x, y, direction);
+        robots = [...robots.filter((r) => r.displayId !== moved.displayId), moved];
+        return of(undefined);
       }),
     };
     robots = [];
@@ -179,50 +190,53 @@ describe('Grid', () => {
     expect(floor.style.gridTemplateRows).toBe(`repeat(${height}, ${size}px)`);
   });
 
-  it('empty GET /floors → createFloor({width:5,height:5}); UI shows 5x5', async () => {
+  it('empty GET /floors → floorCommand({width:5,height:5}), then GET /floors again; UI shows 5x5', async () => {
     const { el } = await render();
-    expect(api.createFloor).toHaveBeenCalledExactlyOnceWith({ width: 5, height: 5 });
+    expect(api.floorCommand).toHaveBeenCalledExactlyOnceWith({ width: 5, height: 5 });
+    expect(api.getFloors).toHaveBeenCalledTimes(2);
     expect(el.querySelectorAll('app-cell').length).toBe(25);
     expect(slider(el, 'Width').value).toBe('5');
     expect(slider(el, 'Height').value).toBe('5');
   });
 
-  it('existing floor → no createFloor; sliders and grid show its size', async () => {
+  it('existing floor → no floorCommand; sliders and grid show its size', async () => {
     const { el } = await render(7, 3);
-    expect(api.createFloor).not.toHaveBeenCalled();
+    expect(api.floorCommand).not.toHaveBeenCalled();
     expect(api.getCells).toHaveBeenCalledWith(1);
     expect(slider(el, 'Width').value).toBe('7');
     expect(slider(el, 'Height').value).toBe('3');
     expect(el.querySelectorAll('app-cell').length).toBe(21);
   });
 
-  it('input event does not PATCH; change event PATCHes once with both values', async () => {
+  it('input event does not save; change event sends floorCommand once with both values', async () => {
     const { fixture, el } = await render(7, 3);
     drag(el, 'Width', 8);
     await fixture.whenStable();
-    expect(api.updateFloor).not.toHaveBeenCalled();
+    expect(api.floorCommand).not.toHaveBeenCalled();
     release(el, 'Width');
     await fixture.whenStable();
-    expect(api.updateFloor).toHaveBeenCalledExactlyOnceWith(1, { width: 8, height: 3 });
+    expect(api.floorCommand).toHaveBeenCalledExactlyOnceWith({ width: 8, height: 3 });
   });
 
-  it('successful PATCH reloads cells', async () => {
+  it('successful resize refetches the floor and its cells', async () => {
     const { fixture, el } = await render(7, 3);
     api.getCells.mockClear();
+    api.getFloors.mockClear();
     drag(el, 'Height', 4);
     release(el, 'Height');
     await fixture.whenStable();
+    expect(api.getFloors).toHaveBeenCalledTimes(1);
     expect(api.getCells).toHaveBeenCalledExactlyOnceWith(1);
     expect(el.querySelectorAll('app-cell').length).toBe(28);
   });
 
-  it('rejected PATCH reverts sliders and grid to the last saved size', async () => {
+  it('rejected resize (400) reverts sliders and grid to the last saved size', async () => {
     const { fixture, el } = await render(5, 3);
     drag(el, 'Width', 6);
     release(el, 'Width');
     await fixture.whenStable();
 
-    api.updateFloor.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 409 })));
+    api.floorCommand.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 400 })));
     drag(el, 'Width', 2);
     // A browser renders the input event before the HTTP error arrives.
     await fixture.whenStable();
@@ -236,9 +250,9 @@ describe('Grid', () => {
     expect(floor.style.gridTemplateColumns).toMatch(/^repeat\(6, /);
   });
 
-  it('409 emits the exact RESIZE_ERROR text', async () => {
+  it('400 emits the exact RESIZE_ERROR text', async () => {
     const { fixture, el, errors } = await render(5, 5);
-    api.updateFloor.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 409 })));
+    api.floorCommand.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 400 })));
     drag(el, 'Width', 1);
     release(el, 'Width');
     await fixture.whenStable();
@@ -246,9 +260,9 @@ describe('Grid', () => {
     expect(errors).toEqual([RESIZE_ERROR]);
   });
 
-  it('non-409 error reverts and emits SERVER_ERROR', async () => {
+  it('non-400 error reverts and emits SERVER_ERROR', async () => {
     const { fixture, el, errors } = await render(5, 5);
-    api.updateFloor.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 500 })));
+    api.floorCommand.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 500 })));
     drag(el, 'Width', 3);
     await fixture.whenStable();
     release(el, 'Width');
@@ -258,9 +272,9 @@ describe('Grid', () => {
     expect(errors).toEqual([SERVER_ERROR]);
   });
 
-  it('unreachable server (status 0) on PATCH emits SERVER_ERROR', async () => {
+  it('unreachable server (status 0) on resize emits SERVER_ERROR', async () => {
     const { fixture, el, errors } = await render(5, 5);
-    api.updateFloor.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 0 })));
+    api.floorCommand.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 0 })));
     drag(el, 'Width', 3);
     await fixture.whenStable();
     release(el, 'Width');
@@ -274,8 +288,9 @@ describe('Grid', () => {
       () => api.getFloors.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 0 }))),
     ],
     [
-      'createFloor',
-      () => api.createFloor.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 0 }))),
+      'floorCommand',
+      () =>
+        api.floorCommand.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 0 }))),
     ],
     [
       'getCells',
@@ -287,7 +302,7 @@ describe('Grid', () => {
     expect(errors).toEqual([SERVER_ERROR]);
   });
 
-  it('PATCH succeeds but cell reload fails → keeps the last shown floor, reverts, emits SERVER_ERROR', async () => {
+  it('resize succeeds but cell reload fails → keeps the last shown floor, reverts, emits SERVER_ERROR', async () => {
     const { fixture, el, errors } = await render(5, 3);
     api.getCells.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 0 })));
     drag(el, 'Width', 7);
@@ -316,25 +331,25 @@ describe('Grid', () => {
     expect(el.querySelectorAll('app-cell').length).toBe(21);
   });
 
-  it('two releases in a row: the second PATCH sends both current values', async () => {
+  it('two releases in a row: the second floorCommand sends both current values', async () => {
     const { fixture, el } = await render(5, 3);
-    api.updateFloor.mockReturnValueOnce(new Subject<Floor>());
+    api.floorCommand.mockReturnValueOnce(new Subject<void>());
     drag(el, 'Width', 8);
     release(el, 'Width');
     drag(el, 'Height', 4);
     release(el, 'Height');
     await fixture.whenStable();
-    expect(api.updateFloor.mock.calls).toEqual([
-      [1, { width: 8, height: 3 }],
-      [1, { width: 8, height: 4 }],
+    expect(api.floorCommand.mock.calls).toEqual([
+      [{ width: 8, height: 3 }],
+      [{ width: 8, height: 4 }],
     ]);
     expect(el.querySelectorAll('app-cell').length).toBe(32);
   });
 
   it('a late response to an earlier release is ignored', async () => {
     const { fixture, el, errors } = await render(5, 3);
-    const first = new Subject<Floor>();
-    api.updateFloor.mockReturnValueOnce(first);
+    const first = new Subject<void>();
+    api.floorCommand.mockReturnValueOnce(first);
     drag(el, 'Width', 8);
     release(el, 'Width');
     drag(el, 'Height', 4);
@@ -342,7 +357,7 @@ describe('Grid', () => {
     release(el, 'Height');
     await fixture.whenStable();
 
-    first.error(new HttpErrorResponse({ status: 409 }));
+    first.error(new HttpErrorResponse({ status: 400 }));
     await fixture.whenStable();
     expect(errors).toEqual([]);
     expect(slider(el, 'Width').value).toBe('8');
@@ -360,50 +375,58 @@ describe('Grid', () => {
   }
 
   describe('edit mode', () => {
-    it('cell click → PATCH /cells/:id with the flipped obstacle; the cell updates after success', async () => {
+    it('cell click → obstacleCommand(x, y); the cell flips after success', async () => {
       const { fixture, el } = await render(3, 3, true);
-      cellAt(el, 1, 0).click();
+      cellAt(el, 2, 1).click();
       await fixture.whenStable();
-      expect(api.updateCell).toHaveBeenCalledExactlyOnceWith(2, { obstacle: true });
-      expect(cellAt(el, 1, 0).classList).toContain('obstacle');
+      expect(api.obstacleCommand).toHaveBeenCalledExactlyOnceWith(2, 1);
+      expect(cellAt(el, 2, 1).classList).toContain('obstacle');
+      expect(cellAt(el, 1, 0).classList).not.toContain('obstacle');
 
-      api.updateCell.mockClear();
+      api.obstacleCommand.mockClear();
       cellAt(el, 1, 0).click();
       await fixture.whenStable();
-      expect(api.updateCell).toHaveBeenCalledExactlyOnceWith(2, { obstacle: false });
+      cellAt(el, 1, 0).click();
+      await fixture.whenStable();
+      expect(api.obstacleCommand.mock.calls).toEqual([
+        [1, 0],
+        [1, 0],
+      ]);
       expect(cellAt(el, 1, 0).classList).not.toContain('obstacle');
     });
 
-    it('the cell does not change before the PATCH succeeds', async () => {
+    it('the cell does not change before the request succeeds', async () => {
       const { fixture, el } = await render(3, 3, true);
-      api.updateCell.mockReturnValueOnce(new Subject<Cell>());
+      api.obstacleCommand.mockReturnValueOnce(new Subject<void>());
       cellAt(el, 1, 0).click();
       await fixture.whenStable();
       expect(cellAt(el, 1, 0).classList).not.toContain('obstacle');
     });
 
-    it('PATCH fails → the cell is unchanged', async () => {
+    it('request fails → the cell is unchanged', async () => {
       const { fixture, el } = await render(3, 3, true);
-      api.updateCell.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 500 })));
+      api.obstacleCommand.mockReturnValueOnce(
+        throwError(() => new HttpErrorResponse({ status: 500 })),
+      );
       cellAt(el, 1, 0).click();
       await fixture.whenStable();
       expect(cellAt(el, 1, 0).classList).not.toContain('obstacle');
     });
 
-    it('edit mode off, cell click → no obstacle PATCH', async () => {
+    it('edit mode off, cell click → no obstacle request', async () => {
       const { fixture, el } = await render(3, 3, false);
       cellAt(el, 1, 0).click();
       await fixture.whenStable();
-      expect(api.updateCell).not.toHaveBeenCalled();
+      expect(api.obstacleCommand).not.toHaveBeenCalled();
     });
 
-    it('click a cell with a robot → no PATCH; the cell is unchanged', async () => {
+    it('click a cell with a robot → no request; the cell is unchanged', async () => {
       robots = [robot(9, 2, 1, 0)];
       const { fixture, el } = await render(3, 3, true);
       cellAt(el, 1, 0).click();
       await fixture.whenStable();
-      expect(api.updateCell).not.toHaveBeenCalled();
-      expect(api.createRobot).not.toHaveBeenCalled();
+      expect(api.obstacleCommand).not.toHaveBeenCalled();
+      expect(api.placeCommand).not.toHaveBeenCalled();
       expect(cellAt(el, 1, 0).classList).not.toContain('obstacle');
     });
 
@@ -436,15 +459,15 @@ describe('Grid', () => {
 
     it('a resize still in flight is dropped by a reset', async () => {
       const { fixture, el } = await render(5, 5);
-      const pending = new Subject<Floor>();
-      api.updateFloor.mockReturnValueOnce(pending);
+      const pending = new Subject<void>();
+      api.floorCommand.mockReturnValueOnce(pending);
       drag(el, 'Width', 8);
       release(el, 'Width');
       await fixture.whenStable();
       fixture.componentInstance.resetFloor().subscribe();
       await fixture.whenStable();
       server = { id: 1, width: 8, height: 5 };
-      pending.next(server);
+      pending.next();
       pending.complete();
       await fixture.whenStable();
       expect(el.querySelectorAll('app-cell')).toHaveLength(25);
@@ -463,11 +486,13 @@ describe('Grid', () => {
   });
 
   describe('robots', () => {
-    it('empty cell click (edit off) → POST /robots with cellId, then renders R<id> with ^', async () => {
+    it('empty cell click (edit off, nothing selected) → placeCommand(x, y, North), then GET /robots renders R<displayId> with ^', async () => {
       const { fixture, el } = await render(3, 3);
+      api.getRobots.mockClear();
       cellAt(el, 2, 1).click();
       await fixture.whenStable();
-      expect(api.createRobot).toHaveBeenCalledExactlyOnceWith(6);
+      expect(api.placeCommand).toHaveBeenCalledExactlyOnceWith(2, 1, Direction.North);
+      expect(api.getRobots).toHaveBeenCalledTimes(1);
       const placed = robotAt(el, 2, 1)!;
       expect(placed.querySelector('.robot-id')!.textContent!.trim()).toBe('R40');
       expect(placed.querySelector('.robot-arrow')!.textContent!.trim()).toBe('^');
@@ -482,7 +507,7 @@ describe('Grid', () => {
       expect(robotAt(el, 2, 2)).not.toBeNull();
     });
 
-    it('Obstacle cell click → no POST', async () => {
+    it('Obstacle cell click → no place request', async () => {
       const { fixture, el } = await render(3, 3, true);
       cellAt(el, 2, 1).click();
       await fixture.whenStable();
@@ -490,20 +515,22 @@ describe('Grid', () => {
       await fixture.whenStable();
       cellAt(el, 2, 1).click();
       await fixture.whenStable();
-      expect(api.createRobot).not.toHaveBeenCalled();
+      expect(api.placeCommand).not.toHaveBeenCalled();
     });
 
-    it('occupied cell click → no POST', async () => {
+    it('occupied cell click → no place request', async () => {
       robots = [robot(9, 6, 2, 1)];
       const { fixture, el } = await render(3, 3);
       cellAt(el, 2, 1).click();
       await fixture.whenStable();
-      expect(api.createRobot).not.toHaveBeenCalled();
+      expect(api.placeCommand).not.toHaveBeenCalled();
     });
 
-    it('POST /robots fails → no robot renders and the placement error is emitted', async () => {
+    it('place request fails → no robot renders and the placement error is emitted', async () => {
       const { fixture, el, errors } = await render(3, 3);
-      api.createRobot.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 400 })));
+      api.placeCommand.mockReturnValueOnce(
+        throwError(() => new HttpErrorResponse({ status: 400 })),
+      );
       cellAt(el, 2, 1).click();
       await fixture.whenStable();
       expect(el.querySelector('app-robot')).toBeNull();
@@ -540,7 +567,7 @@ describe('Grid', () => {
     });
 
     it.each([true, false])(
-      'robot click with edit mode %s → emits robotClicked; no PATCH /cells, no POST /robots',
+      'robot click with edit mode %s → emits robotClicked; no obstacle or place request',
       async (editMode) => {
         robots = [robot(9, 6, 2, 1)];
         const { fixture, el } = await render(3, 3, editMode);
@@ -549,10 +576,63 @@ describe('Grid', () => {
         robotAt(el, 2, 1)!.click();
         await fixture.whenStable();
         expect(clicked).toEqual([9]);
-        expect(api.updateCell).not.toHaveBeenCalled();
-        expect(api.createRobot).not.toHaveBeenCalled();
+        expect(api.obstacleCommand).not.toHaveBeenCalled();
+        expect(api.placeCommand).not.toHaveBeenCalled();
       },
     );
+
+    describe('selected robot', () => {
+      async function renderSelected() {
+        robots = [robot(3, 1, 0, 0, Direction.East)];
+        const rendered = await render(3, 3);
+        rendered.fixture.componentRef.setInput('selectedRobotId', 3);
+        await rendered.fixture.whenStable();
+        api.getRobots.mockClear();
+        return rendered;
+      }
+
+      it('empty Open cell click → placeCommand with its displayId and direction; it moves and stays selected', async () => {
+        const { fixture, el } = await renderSelected();
+        cellAt(el, 2, 1).click();
+        await fixture.whenStable();
+        expect(api.placeCommand).toHaveBeenCalledExactlyOnceWith(2, 1, Direction.East, 3);
+        expect(api.getRobots).toHaveBeenCalledTimes(1);
+        expect(robotAt(el, 0, 0)).toBeNull();
+        const moved = robotAt(el, 2, 1)!;
+        expect(moved.querySelector('.robot-arrow')!.textContent!.trim()).toBe('>');
+        expect(moved.querySelector('.robot')!.classList).toContain('border-green-300');
+      });
+
+      it('Obstacle cell click → no request', async () => {
+        obstacleIds = [6];
+        const { fixture, el } = await renderSelected();
+        cellAt(el, 2, 1).click();
+        await fixture.whenStable();
+        expect(api.placeCommand).not.toHaveBeenCalled();
+      });
+
+      it('occupied cell click → no request', async () => {
+        robots = [robot(3, 1, 0, 0, Direction.East), robot(4, 6, 2, 1)];
+        const { fixture, el } = await render(3, 3);
+        fixture.componentRef.setInput('selectedRobotId', 3);
+        await fixture.whenStable();
+        cellAt(el, 2, 1).click();
+        await fixture.whenStable();
+        expect(api.placeCommand).not.toHaveBeenCalled();
+      });
+
+      it('failure → it stays put and the placement error is emitted', async () => {
+        const { fixture, el, errors } = await renderSelected();
+        api.placeCommand.mockReturnValueOnce(
+          throwError(() => new HttpErrorResponse({ status: 400 })),
+        );
+        cellAt(el, 2, 1).click();
+        await fixture.whenStable();
+        expect(robotAt(el, 0, 0)).not.toBeNull();
+        expect(robotAt(el, 2, 1)).toBeNull();
+        expect(errors).toEqual([PLACE_ERROR]);
+      });
+    });
 
     it('the robot with selectedRobotId gets the selected border', async () => {
       robots = [robot(9, 6, 2, 1), robot(10, 1, 0, 0)];

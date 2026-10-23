@@ -8,5 +8,6 @@ import { LogEntryService } from './log-entry.service.js';
   imports: [TypeOrmModule.forFeature([LogEntry])],
   controllers: [LogEntryController],
   providers: [LogEntryService],
+  exports: [LogEntryService],
 })
 export class LogEntryModule {}

@@ -11,6 +11,7 @@ describe('Cell', () => {
     if (options.robot) {
       fixture.componentRef.setInput('robot', {
         id: 7,
+        displayId: 7,
         direction: Direction.North,
         cellId: 1,
         x: 0,

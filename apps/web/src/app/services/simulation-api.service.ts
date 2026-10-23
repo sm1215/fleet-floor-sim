@@ -4,6 +4,7 @@ import { map, Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { Cell } from '../models/cell.model';
 import { Direction } from '../models/direction';
+import { LogEntry } from '../models/log-entry.model';
 import { EngineState } from '../models/engine-state.model';
 import { Floor, FloorSize } from '../models/floor.model';
 import { CommandName, QueuedCommand } from '../models/queued-command.model';
@@ -17,6 +18,7 @@ interface ApiCell extends Omit<Cell, 'floorId'> {
 /** Robot as returned by the API: the cell relation instead of cellId, x and y. */
 interface ApiRobot {
   id: number;
+  displayId: number;
   direction: Direction;
   cell: Omit<Cell, 'floorId'>;
 }
@@ -30,9 +32,14 @@ function toCell({ floor, ...cell }: ApiCell): Cell {
   return { ...cell, floorId: floor.id };
 }
 
-function toRobot({ id, direction, cell }: ApiRobot): Robot {
-  return { id, direction, cellId: cell.id, x: cell.xPosition, y: cell.yPosition };
+function toRobot({ id, displayId, direction, cell }: ApiRobot): Robot {
+  return { id, displayId, direction, cellId: cell.id, x: cell.xPosition, y: cell.yPosition };
 }
+
+/** Uppercase names the command routes take; the index is the `Direction` value. */
+const DIRECTION_NAMES = ['NORTH', 'EAST', 'SOUTH', 'WEST'] as const;
+
+const rId = (displayId: number) => `R${displayId}`;
 
 function toQueuedCommand({ robot, ...command }: ApiQueuedCommand): QueuedCommand {
   return { ...command, robotId: robot.id };
@@ -48,14 +55,6 @@ export class SimulationApiService {
     return this.http.get<Floor[]>(`${this.api}/floors`);
   }
 
-  createFloor(size: FloorSize): Observable<Floor> {
-    return this.http.post<Floor>(`${this.api}/floors`, size);
-  }
-
-  updateFloor(id: number, size: FloorSize): Observable<Floor> {
-    return this.http.patch<Floor>(`${this.api}/floors/${id}`, size);
-  }
-
   /** Empties the floor and the log, rebuilds it 5 x 5 all Open, and pauses the engine at tick 0. */
   resetFloor(id: number): Observable<Floor> {
     return this.http.post<Floor>(`${this.api}/floors/${id}/reset`, {});
@@ -68,26 +67,10 @@ export class SimulationApiService {
       .pipe(map((cells) => cells.filter((cell) => cell.floor.id === floorId).map(toCell)));
   }
 
-  updateCell(id: number, change: Pick<Cell, 'obstacle'>): Observable<Cell> {
-    return this.http.patch<ApiCell>(`${this.api}/cells/${id}`, change).pipe(map(toCell));
-  }
-
   getRobots(): Observable<Robot[]> {
     return this.http
       .get<ApiRobot[]>(`${this.api}/robots`)
       .pipe(map((robots) => robots.map(toRobot)));
-  }
-
-  /** Places a new robot, facing North, on a cell. */
-  createRobot(cellId: number): Observable<Robot> {
-    return this.http
-      .post<ApiRobot>(`${this.api}/robots`, { cellId, direction: Direction.North })
-      .pipe(map(toRobot));
-  }
-
-  /** Deletes a robot; the API deletes its queued commands with it. */
-  deleteRobot(id: number): Observable<void> {
-    return this.http.delete<void>(`${this.api}/robots/${id}`);
   }
 
   /** One robot's queue in FIFO order. */
@@ -97,10 +80,34 @@ export class SimulationApiService {
       .pipe(map((commands) => commands.map(toQueuedCommand)));
   }
 
-  createQueuedCommand(robotId: number, command: CommandName): Observable<QueuedCommand> {
-    return this.http
-      .post<ApiQueuedCommand>(`${this.api}/queued-commands`, { robotId, command })
-      .pipe(map(toQueuedCommand));
+  /** Creates the floor, or resizes it. 400 when the resize has no room. */
+  floorCommand(size: FloorSize): Observable<void> {
+    return this.command('floor', size);
+  }
+
+  /** Toggles the cell at x/y between Open and Obstacle. */
+  obstacleCommand(x: number, y: number): Observable<void> {
+    return this.command('obstacle', { x, y });
+  }
+
+  /** Moves and turns robot `displayId`, or places a new robot when it is omitted. */
+  placeCommand(x: number, y: number, direction: Direction, displayId?: number): Observable<void> {
+    const body = { x, y, direction: DIRECTION_NAMES[direction] };
+    return this.command('place', displayId === undefined ? body : { ...body, rId: rId(displayId) });
+  }
+
+  queueCommand(displayId: number, command: CommandName): Observable<void> {
+    return this.command('queue', { rId: rId(displayId), commands: [command] });
+  }
+
+  /** Deletes a robot and its queued commands. */
+  deleteCommand(displayId: number): Observable<void> {
+    return this.command('delete', { rId: rId(displayId) });
+  }
+
+  /** Every log entry, ascending id. */
+  getLogEntries(): Observable<LogEntry[]> {
+    return this.http.get<LogEntry[]>(`${this.api}/log-entries`);
   }
 
   getEngine(): Observable<EngineState> {
@@ -114,5 +121,10 @@ export class SimulationApiService {
   /** Turns the engine's automatic stepping on or off. */
   toggleEngine(): Observable<EngineState> {
     return this.http.post<EngineState>(`${this.api}/engine/toggle`, {});
+  }
+
+  /** POST /commands/<name>; the `{ ok: true }` body is dropped. */
+  private command(name: string, body: object): Observable<void> {
+    return this.http.post(`${this.api}/commands/${name}`, body).pipe(map(() => undefined));
   }
 }

@@ -8,7 +8,7 @@ import { Grid } from './components/grid/grid';
 import { Cell } from './models/cell.model';
 import { Direction } from './models/direction';
 import { EngineState } from './models/engine-state.model';
-import { CommandName, QueuedCommand } from './models/queued-command.model';
+import { QueuedCommand } from './models/queued-command.model';
 import { SimulationApiService } from './services/simulation-api.service';
 
 const queues: Record<number, QueuedCommand[]> = {
@@ -52,16 +52,16 @@ describe('App', () => {
 
   let api: Record<
     | 'getFloors'
-    | 'createFloor'
-    | 'updateFloor'
+    | 'floorCommand'
     | 'resetFloor'
     | 'getCells'
-    | 'updateCell'
+    | 'obstacleCommand'
     | 'getRobots'
-    | 'createRobot'
-    | 'deleteRobot'
+    | 'placeCommand'
+    | 'deleteCommand'
     | 'getQueuedCommands'
-    | 'createQueuedCommand'
+    | 'queueCommand'
+    | 'getLogEntries'
     | 'getEngine'
     | 'stepEngine'
     | 'toggleEngine',
@@ -71,23 +71,21 @@ describe('App', () => {
   beforeEach(() => {
     api = {
       getFloors: vi.fn(() => of([{ id: 1, width: 5, height: 5 }])),
-      createFloor: vi.fn(),
-      updateFloor: vi.fn(),
+      floorCommand: vi.fn(() => of(undefined)),
       resetFloor: vi.fn(() => of({ id: 1, width: 5, height: 5 })),
       getCells: vi.fn(() => of(makeCells(5, 5))),
-      updateCell: vi.fn(),
+      obstacleCommand: vi.fn(() => of(undefined)),
       getRobots: vi.fn(() =>
         of([
-          { id: 7, direction: Direction.North, cellId: 1, x: 0, y: 0 },
-          { id: 8, direction: Direction.East, cellId: 2, x: 1, y: 0 },
+          { id: 7, displayId: 7, direction: Direction.North, cellId: 1, x: 0, y: 0 },
+          { id: 8, displayId: 8, direction: Direction.East, cellId: 2, x: 1, y: 0 },
         ]),
       ),
-      createRobot: vi.fn(),
-      deleteRobot: vi.fn(() => of(undefined)),
+      placeCommand: vi.fn(() => of(undefined)),
+      deleteCommand: vi.fn(() => of(undefined)),
       getQueuedCommands: vi.fn((robotId: number) => of(queues[robotId] ?? [])),
-      createQueuedCommand: vi.fn((robotId: number, command: CommandName) =>
-        of({ id: 100, command, params: null, robotId }),
-      ),
+      queueCommand: vi.fn(() => of(undefined)),
+      getLogEntries: vi.fn(() => of([])),
       getEngine: vi.fn(() => of(engineState())),
       stepEngine: vi.fn(() => of(engineState({ currentTick: 1 }))),
       toggleEngine: vi.fn(() => of(engineState({ running: true }))),
@@ -193,6 +191,18 @@ describe('App', () => {
     expect(el.querySelector('app-log-modal')).toBeNull();
   });
 
+  it('opening Log twice fetches the log each time', async () => {
+    const fixture = await setup();
+    const el = fixture.nativeElement as HTMLElement;
+    for (let i = 0; i < 2; i++) {
+      buttonNamed(el, 'Log')!.click();
+      await fixture.whenStable();
+      el.querySelector<HTMLButtonElement>('button[aria-label="Close"]')!.click();
+      await fixture.whenStable();
+    }
+    expect(api.getLogEntries).toHaveBeenCalledTimes(2);
+  });
+
   describe('errors', () => {
     async function withErrors(...texts: string[]) {
       const fixture = await setup();
@@ -266,8 +276,8 @@ describe('App', () => {
       expect(errorTexts(fixture.nativeElement as HTMLElement)).toEqual(["Server can't be reached"]);
     });
 
-    it('a 409 resize shows the exact text', async () => {
-      api.updateFloor.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 409 })));
+    it('a rejected (400) resize shows the exact text', async () => {
+      api.floorCommand.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 400 })));
       const fixture = await setup();
       const el = fixture.nativeElement as HTMLElement;
       const width = el.querySelector<HTMLInputElement>('input[aria-label="Width"]')!;
@@ -279,9 +289,7 @@ describe('App', () => {
     });
 
     it('a failed command POST shows "Command failed to queue." and leaves the panel unchanged', async () => {
-      api.createQueuedCommand.mockReturnValue(
-        throwError(() => new HttpErrorResponse({ status: 500 })),
-      );
+      api.queueCommand.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 400 })));
       const fixture = await setup();
       const el = fixture.nativeElement as HTMLElement;
       robotEl(el, 7).click();
@@ -293,7 +301,7 @@ describe('App', () => {
     });
 
     it('a failed delete shows "Robot failed to delete."; the robot stays selected', async () => {
-      api.deleteRobot.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+      api.deleteCommand.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 400 })));
       const fixture = await setup();
       const el = fixture.nativeElement as HTMLElement;
       robotEl(el, 7).click();
@@ -308,7 +316,7 @@ describe('App', () => {
 
     it('a failed placement shows "Robot failed to place."', async () => {
       api.getRobots.mockReturnValue(of([]));
-      api.createRobot.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 400 })));
+      api.placeCommand.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 400 })));
       const fixture = await setup();
       const el = fixture.nativeElement as HTMLElement;
       el.querySelector<HTMLElement>('app-cell .cell')!.click();
@@ -357,18 +365,15 @@ describe('App', () => {
       expect(button.firstElementChild).toBe(svg);
     });
 
-    it('passes edit mode to the grid: a cell click PATCHes instead of placing', async () => {
-      api.updateCell.mockReturnValue(
-        of({ id: 21, obstacle: true, xPosition: 0, yPosition: 4, floorId: 1 }),
-      );
+    it('passes edit mode to the grid: a cell click toggles an obstacle instead of placing', async () => {
       const fixture = await setup();
       const el = fixture.nativeElement as HTMLElement;
       editButton(el).click();
       await fixture.whenStable();
       el.querySelector<HTMLElement>('app-cell .cell')!.click();
       await fixture.whenStable();
-      expect(api.updateCell).toHaveBeenCalledExactlyOnceWith(21, { obstacle: true });
-      expect(api.createRobot).not.toHaveBeenCalled();
+      expect(api.obstacleCommand).toHaveBeenCalledExactlyOnceWith(0, 4);
+      expect(api.placeCommand).not.toHaveBeenCalled();
     });
   });
 
@@ -395,7 +400,7 @@ describe('App', () => {
       for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowUp']) {
         document.dispatchEvent(new KeyboardEvent('keydown', { key }));
       }
-      expect(api.createQueuedCommand).not.toHaveBeenCalled();
+      expect(api.queueCommand).not.toHaveBeenCalled();
     });
 
     it('a selection enables the command buttons', async () => {
@@ -421,7 +426,7 @@ describe('App', () => {
       expect(isSelected(el, 8)).toBe(true);
     });
 
-    it('selects in edit mode too, with no PATCH /cells', async () => {
+    it('selects in edit mode too, with no obstacle request', async () => {
       const fixture = await setup();
       const el = fixture.nativeElement as HTMLElement;
       buttonNamed(el, 'Edit: Off')!.click();
@@ -429,29 +434,43 @@ describe('App', () => {
       robotEl(el, 7).click();
       await fixture.whenStable();
       expect(isSelected(el, 7)).toBe(true);
-      expect(api.updateCell).not.toHaveBeenCalled();
+      expect(api.obstacleCommand).not.toHaveBeenCalled();
     });
 
     it.each([
       ['Turn Left', 'LEFT'],
       ['Turn Right', 'RIGHT'],
       ['Move', 'MOVE'],
-    ])('the %s button POSTs %s with the selected robot Id', async (label, command) => {
+    ])('the %s button queues %s for the selected robot displayId', async (label, command) => {
       const { fixture, el } = await selected(8);
       buttonNamed(el, label)!.click();
       await fixture.whenStable();
-      expect(api.createQueuedCommand).toHaveBeenCalledExactlyOnceWith(8, command);
+      expect(api.queueCommand).toHaveBeenCalledExactlyOnceWith(8, command);
+    });
+
+    it('commands and Delete address the robot by displayId, not by id', async () => {
+      api.getRobots.mockReturnValue(
+        of([{ id: 7, displayId: 3, direction: Direction.North, cellId: 1, x: 0, y: 0 }]),
+      );
+      const { fixture, el } = await selected(3);
+      buttonNamed(el, 'Move')!.click();
+      await fixture.whenStable();
+      expect(api.queueCommand).toHaveBeenCalledExactlyOnceWith(3, 'MOVE');
+      expect(api.getQueuedCommands).toHaveBeenLastCalledWith(7);
+      buttonNamed(el, 'Delete')!.click();
+      await fixture.whenStable();
+      expect(api.deleteCommand).toHaveBeenCalledExactlyOnceWith(3);
     });
 
     it.each([
       ['ArrowLeft', 'LEFT'],
       ['ArrowRight', 'RIGHT'],
       ['ArrowUp', 'MOVE'],
-    ])('%s POSTs %s with the selected robot Id', async (key, command) => {
+    ])('%s queues %s for the selected robot displayId', async (key, command) => {
       const { fixture } = await selected(7);
       document.dispatchEvent(new KeyboardEvent('keydown', { key }));
       await fixture.whenStable();
-      expect(api.createQueuedCommand).toHaveBeenCalledExactlyOnceWith(7, command);
+      expect(api.queueCommand).toHaveBeenCalledExactlyOnceWith(7, command);
     });
 
     it('selecting a robot → GET its queued commands; shown in order', async () => {
@@ -468,31 +487,34 @@ describe('App', () => {
       expect(queueItems(el)).toEqual([]);
     });
 
-    it('POST success → the returned command is appended to the panel', async () => {
+    it('queue success → the panel is refetched', async () => {
       const { fixture, el } = await selected(7);
+      api.getQueuedCommands.mockReturnValueOnce(
+        of([...queues[7], { id: 100, command: 'RIGHT', params: null, robotId: 7 }]),
+      );
       buttonNamed(el, 'Turn Right')!.click();
       await fixture.whenStable();
       expect(queueItems(el)).toEqual(['MOVE', 'LEFT', 'RIGHT']);
     });
 
-    it('a POST that succeeds after switching robots does not reach the new panel', async () => {
-      const pending = new Subject<QueuedCommand>();
-      api.createQueuedCommand.mockReturnValueOnce(pending);
+    it('a queue request that succeeds after switching robots does not reach the new panel', async () => {
+      const pending = new Subject<void>();
+      api.queueCommand.mockReturnValueOnce(pending);
       const { fixture, el } = await selected(7);
       buttonNamed(el, 'Move')!.click();
       robotEl(el, 8).click();
       await fixture.whenStable();
-      pending.next({ id: 101, command: 'MOVE', params: null, robotId: 7 });
+      pending.next();
       pending.complete();
       await fixture.whenStable();
       expect(queueItems(el)).toEqual(['RIGHT']);
     });
 
-    it('Delete → DELETE the selected robot; it leaves the grid, the selection and queue clear', async () => {
+    it('Delete → deleteCommand for the selected robot; it leaves the grid, the selection and queue clear', async () => {
       const { fixture, el } = await selected(7);
       buttonNamed(el, 'Delete')!.click();
       await fixture.whenStable();
-      expect(api.deleteRobot).toHaveBeenCalledExactlyOnceWith(7);
+      expect(api.deleteCommand).toHaveBeenCalledExactlyOnceWith(7);
       expect(robotEl(el, 7)).toBeUndefined();
       expect(robotEl(el, 8)).toBeDefined();
       expect(queueItems(el)).toEqual([]);
@@ -503,7 +525,7 @@ describe('App', () => {
 
     it('a delete that succeeds after switching robots keeps the new selection', async () => {
       const pending = new Subject<void>();
-      api.deleteRobot.mockReturnValueOnce(pending);
+      api.deleteCommand.mockReturnValueOnce(pending);
       const { fixture, el } = await selected(7);
       buttonNamed(el, 'Delete')!.click();
       robotEl(el, 8).click();

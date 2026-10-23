@@ -196,8 +196,8 @@ export class App {
     });
   }
 
+  /** The modal loads the log each time it opens. */
   onOpenLog(): void {
-    // Opens the modal (frontend). Target for loading the log: API / Frontend, TBD.
     this.logOpen.set(true);
   }
 
@@ -220,8 +220,9 @@ export class App {
   /** Deletes the selected robot; on success it leaves the grid and the selection clears. */
   onDelete(): void {
     const id = this.selectedRobotId();
-    if (id === null) return;
-    this.api.deleteRobot(id).subscribe({
+    const robot = id === null ? undefined : this.grid().findRobot(id);
+    if (id === null || !robot) return;
+    this.api.deleteCommand(robot.displayId).subscribe({
       next: () => {
         this.grid().removeRobot(id);
         if (this.selectedRobotId() === id) {
@@ -233,13 +234,14 @@ export class App {
     });
   }
 
-  /** Queues a command for the selected robot; does nothing with no selection. */
+  /** Queues a command for the selected robot, then refetches its queue; does nothing with no selection. */
   private sendCommand(command: CommandName): void {
     const id = this.selectedRobotId();
-    if (id === null) return;
-    this.api.createQueuedCommand(id, command).subscribe({
-      next: (queued) => {
-        if (this.selectedRobotId() === id) this.queue.update((queue) => [...queue, queued]);
+    const robot = id === null ? undefined : this.grid().findRobot(id);
+    if (id === null || !robot) return;
+    this.api.queueCommand(robot.displayId, command).subscribe({
+      next: () => {
+        if (this.selectedRobotId() === id) this.reloadQueue();
       },
       error: () => this.addError(COMMAND_ERROR),
     });

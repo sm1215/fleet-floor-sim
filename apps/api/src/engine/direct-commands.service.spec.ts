@@ -43,7 +43,7 @@ describe('DirectCommandsService (SQLite)', () => {
       .findOne({ where: { displayId }, relations: { cell: true } });
 
   it('floor creates a 5x5 Open floor when none exists', async () => {
-    await expect(direct.floor(5, 5)).resolves.toEqual({ ok: true });
+    await expect(direct.floor(5, 5)).resolves.toMatchObject({ ok: true });
     expect(await floors()).toHaveLength(1);
     const all = await cells();
     expect(all).toHaveLength(25);
@@ -52,7 +52,7 @@ describe('DirectCommandsService (SQLite)', () => {
 
   it('floor resizes the existing floor', async () => {
     await direct.floor(5, 5);
-    await expect(direct.floor(4, 3)).resolves.toEqual({ ok: true });
+    await expect(direct.floor(4, 3)).resolves.toMatchObject({ ok: true });
     const all = await floors();
     expect(all).toHaveLength(1);
     expect(all[0]).toMatchObject({ width: 4, height: 3 });
@@ -76,7 +76,7 @@ describe('DirectCommandsService (SQLite)', () => {
   it('obstacle sets the cell; ignores missing cell and robot cell', async () => {
     expect((await direct.obstacle(1, 1)).ok).toBe(false);
     await direct.floor(5, 5);
-    await expect(direct.obstacle(2, 3)).resolves.toEqual({ ok: true });
+    await expect(direct.obstacle(2, 3)).resolves.toMatchObject({ ok: true });
     expect((await cellAt(2, 3)).obstacle).toBe(true);
     expect((await direct.obstacle(9, 9)).ok).toBe(false);
     await direct.place(1, 0, 0, Direction.N);
@@ -86,7 +86,7 @@ describe('DirectCommandsService (SQLite)', () => {
 
   it('place creates R7 with displayId 7', async () => {
     await direct.floor(5, 5);
-    await expect(direct.place(7, 1, 2, Direction.E)).resolves.toEqual({
+    await expect(direct.place(7, 1, 2, Direction.E)).resolves.toMatchObject({
       ok: true,
     });
     const r = await robot(7);
@@ -97,14 +97,14 @@ describe('DirectCommandsService (SQLite)', () => {
   it('place moves and turns an existing robot', async () => {
     await direct.floor(5, 5);
     await direct.place(1, 0, 0, Direction.N);
-    await expect(direct.place(1, 3, 4, Direction.W)).resolves.toEqual({
+    await expect(direct.place(1, 3, 4, Direction.W)).resolves.toMatchObject({
       ok: true,
     });
     expect(await dataSource.getRepository(Robot).count()).toBe(1);
     const r = await robot(1);
     expect(r!.direction).toBe(Direction.W);
     expect(r!.cell).toMatchObject({ xPosition: 3, yPosition: 4 });
-    await expect(direct.place(1, 3, 4, Direction.S)).resolves.toEqual({
+    await expect(direct.place(1, 3, 4, Direction.S)).resolves.toMatchObject({
       ok: true,
     });
   });
@@ -140,9 +140,9 @@ describe('DirectCommandsService (SQLite)', () => {
   it('queue enqueues several commands in order', async () => {
     await direct.floor(5, 5);
     await direct.place(1, 0, 0, Direction.N);
-    await expect(direct.queue(1, ['MOVE', 'RIGHT', 'MOVE'])).resolves.toEqual({
-      ok: true,
-    });
+    await expect(
+      direct.queue(1, ['MOVE', 'RIGHT', 'MOVE']),
+    ).resolves.toMatchObject({ ok: true });
     const rows = await dataSource
       .getRepository(QueuedCommand)
       .find({ order: { id: 'ASC' }, relations: { robot: true } });
@@ -214,5 +214,110 @@ describe('DirectCommandsService (SQLite)', () => {
     for (const entity of [Floor, Cell, Robot, QueuedCommand]) {
       expect(await dataSource.getRepository(entity).count()).toBe(0);
     }
+  });
+
+  describe('log lines and new behavior', () => {
+    it('floor logs CREATED, then RESIZED; a resize with no room is ignored', async () => {
+      await expect(direct.floor(5, 5)).resolves.toEqual({
+        ok: true,
+        log: { action: 'FLOOR', params: '5, 5, CREATED' },
+      });
+      await expect(direct.floor(8, 5)).resolves.toEqual({
+        ok: true,
+        log: { action: 'FLOOR', params: '8, 5, RESIZED' },
+      });
+      await direct.floor(1, 1);
+      await direct.place(1, 0, 0, Direction.N);
+      await direct.floor(2, 1);
+      await direct.place(2, 1, 0, Direction.N);
+      expect((await direct.floor(1, 1)).ok).toBe(false);
+    });
+
+    it('obstacle toggles ON then OFF; ON a robot cell is ignored', async () => {
+      await direct.floor(5, 5);
+      await expect(direct.obstacle(2, 3)).resolves.toEqual({
+        ok: true,
+        log: { action: 'OBSTACLE', params: '2, 3, ON' },
+      });
+      expect((await cellAt(2, 3)).obstacle).toBe(true);
+      await expect(direct.obstacle(2, 3)).resolves.toEqual({
+        ok: true,
+        log: { action: 'OBSTACLE', params: '2, 3, OFF' },
+      });
+      expect((await cellAt(2, 3)).obstacle).toBe(false);
+      await direct.place(1, 0, 0, Direction.N);
+      expect((await direct.obstacle(0, 0)).ok).toBe(false);
+      expect((await cellAt(0, 0)).obstacle).toBe(false);
+    });
+
+    it('place without displayId creates R1 when there are no robots', async () => {
+      await direct.floor(5, 5);
+      await expect(direct.place(undefined, 2, 3, Direction.N)).resolves.toEqual(
+        {
+          ok: true,
+          log: { action: 'PLACE', params: 'R1 2, 3, NORTH' },
+        },
+      );
+      expect(await robot(1)).not.toBeNull();
+    });
+
+    it('place without displayId uses the highest displayId + 1 (R1, R3 → R4)', async () => {
+      await direct.floor(5, 5);
+      await direct.place(1, 0, 0, Direction.N);
+      await direct.place(3, 1, 0, Direction.N);
+      await expect(direct.place(undefined, 2, 0, Direction.S)).resolves.toEqual(
+        {
+          ok: true,
+          log: { action: 'PLACE', params: 'R4 2, 0, SOUTH' },
+        },
+      );
+      expect((await robot(4))!.cell).toMatchObject({
+        xPosition: 2,
+        yPosition: 0,
+      });
+    });
+
+    it('place logs a move and turn of an existing robot, and a place on its own cell', async () => {
+      await direct.floor(5, 5);
+      await direct.place(1, 0, 0, Direction.N);
+      await expect(direct.place(1, 4, 0, Direction.E)).resolves.toEqual({
+        ok: true,
+        log: { action: 'PLACE', params: 'R1 4, 0, EAST' },
+      });
+      await expect(direct.place(1, 4, 0, Direction.N)).resolves.toEqual({
+        ok: true,
+        log: { action: 'PLACE', params: 'R1 4, 0, NORTH' },
+      });
+    });
+
+    it('queue logs the rId and every command', async () => {
+      await direct.floor(5, 5);
+      await direct.place(1, 0, 0, Direction.N);
+      await expect(direct.queue(1, ['MOVE', 'LEFT'])).resolves.toEqual({
+        ok: true,
+        log: { action: 'QUEUE', params: 'R1 MOVE LEFT' },
+      });
+    });
+
+    it('delete removes the robot and its queue; unknown robot is ignored', async () => {
+      await direct.floor(5, 5);
+      await direct.place(1, 0, 0, Direction.N);
+      await direct.place(2, 1, 0, Direction.N);
+      await direct.queue(1, ['MOVE']);
+      await direct.queue(2, ['LEFT']);
+      await expect(direct.delete(1)).resolves.toEqual({
+        ok: true,
+        log: { action: 'DELETE', params: 'R1' },
+      });
+      expect(await robot(1)).toBeNull();
+      const rows = await dataSource
+        .getRepository(QueuedCommand)
+        .find({ relations: { robot: true } });
+      expect(rows.map((r) => r.robot.displayId)).toEqual([2]);
+      await expect(direct.delete(9)).resolves.toEqual({
+        ok: false,
+        reason: 'Robot R9 not found',
+      });
+    });
   });
 });

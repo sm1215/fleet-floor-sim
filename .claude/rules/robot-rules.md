@@ -29,12 +29,20 @@ paths:
 
 ## Placement (enforced by both client and API)
 
-- Edit mode off: clicking an empty cell sends `POST /robots { cellId, direction: North }`
-  through `SimulationApiService`. The robot renders with the returned Id.
+- Edit mode off, no robot selected: clicking an empty Open cell sends `POST /commands/place { x, y, direction: 'NORTH' }`
+  (no `rId`) through `SimulationApiService`. On success, `GET /robots` refetches and the robot renders.
 - Clicking an Obstacle or occupied cell is ignored: no POST.
 - Robots can't be placed outside the grid.
 - The API returns 400 for an Obstacle or occupied cell and creates nothing.
-- A failed `POST /robots` renders nothing and shows `Robot failed to place.` (see Errors in `frontend.md`).
+- A failed `POST /commands/place` renders nothing and shows `Robot failed to place.` (see Errors in `frontend.md`).
+
+## Move selected robot
+
+- Edit mode off, robot selected: clicking an empty Open cell sends `POST /commands/place { rId, x, y, direction }`
+  with the robot's `R<displayId>`, the new x/y and its current direction. On success, `GET /robots` refetches;
+  the robot shows on the new cell and stays selected.
+- Obstacle or occupied cell → no request.
+- Failure → nothing moves and `Robot failed to place.` shows.
 
 ## Persistence
 
@@ -57,15 +65,15 @@ paths:
 
 ## Commands
 
-- Turn Left / Turn Right / Move → `POST /queued-commands { robotId, command }` with
-  `LEFT` / `RIGHT` / `MOVE` (uppercase).
+- Turn Left / Turn Right / Move → `POST /commands/queue { rId, commands: [command] }` with
+  `LEFT` / `RIGHT` / `MOVE` (uppercase) and the selected robot's `R<displayId>`.
 - ArrowLeft / ArrowRight / ArrowUp do the same while a robot is selected.
-- API: `COMMANDS` = `['MOVE', 'LEFT', 'RIGHT']`. `params` is optional on `CreateQueuedCommandDto`.
+- API: `COMMANDS` = `['MOVE', 'LEFT', 'RIGHT']`. Queued commands are stored with `params: null`.
 
 ## Delete
 
 - A Delete button sits after Move, enabled only while a robot is selected. No keyboard shortcut, no confirmation.
-- Click → `DELETE /robots/:id` with the selected robot's Id. Allowed while the engine is playing.
+- Click → `POST /commands/delete { rId }` with the selected robot's `R<displayId>`. Allowed while the engine is playing.
 - The API deletes the robot's queued commands and the robot in one transaction.
 - Success → the robot leaves the grid; if it is still selected, the selection and queue panel clear.
 - Failure → nothing changes and `Robot failed to delete.` shows (see Errors in `frontend.md`).
@@ -73,7 +81,7 @@ paths:
 ## Queue panel
 
 - Selecting a robot sends `GET /robots/:id/queued-commands` and shows the result in FIFO order (ascending Id).
-- A successful POST appends the returned command to the panel.
+- A successful POST refetches `GET /robots/:id/queued-commands` into the panel.
 - A failed POST leaves the panel unchanged and shows `Command failed to queue.` (see Errors in `frontend.md`).
 
 ## Styles
@@ -107,47 +115,42 @@ Client (`robot.spec.ts`):
 
 Client (`grid.spec.ts`):
 
-- Empty cell click (edit off) → `POST /robots` with cellId + North, then renders `R<id>` with `^`.
+- Empty cell click (edit off, nothing selected) → `POST /commands/place` with x/y + `NORTH`, no `rId`; then `GET /robots` and render.
+- Empty cell click (edit off, robot selected) → `POST /commands/place` with its `rId`, x/y and current direction; then `GET /robots`; it stays selected.
 - Obstacle cell click → no POST.
 - Occupied cell click → no POST.
-- `POST /robots` fails → no robot renders and `Robot failed to place.` is emitted.
+- `POST /commands/place` fails → nothing changes and `Robot failed to place.` is emitted.
 - Init `GET /robots` → robots render at their cell x/y with their direction.
-- Robot click in edit mode → selects it; no `PATCH /cells`.
-- Robot click in non-edit mode → selects it; no `POST /robots`.
+- Robot click in edit mode → selects it; no `POST /commands/obstacle`.
+- Robot click in non-edit mode → selects it; no `POST /commands/place`.
 - `removeRobot(id)` → that robot is no longer rendered; others stay.
 
 Client (`app.spec.ts`):
 
 - No selection → Move / Turn Left / Turn Right / Delete disabled, and arrow keys send nothing.
-- Delete → `DELETE /robots/:id` for the selected robot; it leaves the grid; selection and queue clear.
+- Delete → `POST /commands/delete` with the selected robot's `rId`; it leaves the grid; selection and queue clear.
 - Delete success after switching robots → the new selection stays.
 - Delete failure → robot stays selected, queue unchanged, `Robot failed to delete.` shown.
 - Select a robot, click it again to deselect, click another to switch.
-- Buttons and arrow keys POST the matching uppercase command with the selected robot's Id.
+- Buttons and arrow keys `POST /commands/queue` with the matching uppercase command and the selected robot's `rId`.
 - Selecting a robot → `GET /robots/:id/queued-commands`; commands shown in order.
-- POST success → returned command appended to the panel.
+- POST success → the panel is refetched.
 - POST failure → panel unchanged and `Command failed to queue.` shown.
 
 Client (`queue-panel.spec.ts`):
 
 - Renders commands in the given order.
 
-API (`robot.service.spec.ts`):
+API (`robot.service.spec.ts`, `queued-command.service.spec.ts`; the only robot reads are `GET /robots` and `GET /robots/:id/queued-commands`):
 
-- Create on an Obstacle cell → rejected; nothing created.
-- Create on an occupied cell → rejected; nothing created.
 - `findAll` includes each robot's cell x/y.
-- `remove` deletes the robot and only its queued commands.
-
-API (queued-command service spec / DTO):
-
-- `LEFT`, `RIGHT`, `MOVE` accepted.
-- `TURN_LEFT`, lowercase (`left`), and unknown commands rejected.
-- Missing `params` accepted.
 - `GET /robots/:id/queued-commands` returns only that robot's commands, ascending Id.
 
-API e2e (`apps/api/test/`):
+Placement, commands and delete rules are tested on the Engine and `/commands/*` (see Testing in `commands.md`).
 
-- A created robot is returned by `GET /robots` with its cell and direction after an app restart
+API e2e (`apps/api/test/robot.e2e-spec.ts`):
+
+- PLACE on an Obstacle, occupied or missing cell → 400; nothing created.
+- A placed robot is returned by `GET /robots` with its cell and direction after an app restart
   (new app instance, same DB file).
-- `DELETE /robots/:id` on a robot with queued commands → 200; gone from `GET /robots`, its queue is empty.
+- `POST /commands/delete` on a robot with queued commands → 200; gone from `GET /robots`, its queue is empty.
