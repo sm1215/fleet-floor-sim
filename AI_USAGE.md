@@ -179,3 +179,7 @@ User asked to run all 5 scenarios and verify against scenarios/expected. Ran `np
 User asked to verify `npm run db:migrate` and fix the README Database section. Script exists (root + apps/api); migration:show listed all 4 migrations applied. Replaced "not available yet" with run instructions and a db:migrate / generate / revert table. Then spawned a subagent to compare README vs CLAUDE.md for gaps. Not committed.
 
 User picked README additions from the subagent review. Added Using the App (floor, robots, arrow keys, Edit mode, Step/Play, Log, Reset All, Delete Floor, GOTO, timeline/fork), scenario file format, tech stack, project structure. Diagrams called the starting point, not source of truth (user ruling). Env column renamed to "Value in .env.example". Fixed 3 typos; Prettier whitespace pass. Facts checked against code/rules. Not committed.
+
+User asked for a fresh-clone verification. Cloned to C:/Users/sm121/fleet-floor-sim-freshtest, npm install, .env, db:migrate, test (307+235), e2e (71), build, 5 scenarios all pass; browser smoke test OK. Found: web lint fails on fresh Windows clone (autocrlf=true -> CRLF, Prettier wants LF; no .gitattributes). README otherwise accurate. No repo changes.
+
+User asked to fix expected scenario reports so a plain diff matches runner stdout. Added a final newline to all 5 files in scenarios/expected/ and converted scenario-2-report.txt from CRLF to LF. Plain diff matches for all 5; e2e 71 passed. Not committed.
