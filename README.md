@@ -85,4 +85,14 @@ It will load a plain-text scenario file and run it against the Engine directly (
 - It would also reduce the amount of queueing & logging that occurs and make the queue & log more succint. It would be small, but it would also save on log file sizes.
 
 ## What's Missing
-- UI polish. There's some awkward decisions that got crammed in while adding the modules because they introduce more complexity. I hadn't thought these parts through while doing the initial sketching and planning.
+- UI polish. There's some awkward decisions that got crammed in while adding the modules because they introduce more complexity. I hadn't thought these parts through while doing the initial sketching and planning. For example, switching between floors occurs under the grid near the Fork button. Maybe it would be better suited elsewhere.
+- The arrow representations of the robot's direction are small and could be hard to read.
+- The log display is really minimal and just displays a wall of text. It's functional but there could be improvements on how to handle it. You can lose the close button on the top right while scrolling.
+- There's no way to adjust the tick rate other than through the Engine service file on the backend.
+- The error displays on the frontend are extra but they also are really minimal, these could be improved. I thought it was important for the user to have some kind of feedback somewhere, and this is where they landed.
+- There's no way to undo a queued action once it is in the queue.
+- It would be nice if there were a graphical representation of GOTO's predicted path when one is issued
+- I didn't add any Scenarios of my own, time was a constraint here. It would be helpful to add edge cases to prove behavior followed the rules. It would also be helpful to add a Scenario with a GOTO command to support the recently added module.
+- The other 2 modules, Module B: Battery and chargers and Module D: Multiple users in real time.
+
+
